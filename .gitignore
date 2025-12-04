@@ -1,0 +1,40 @@
+# --- Python / Django ---
+venv/
+*.pyc
+__pycache__/
+*.log
+*.sqlite3
+.env
+.env.local
+.env.*
+
+
+# --- Django specific ---
+media/
+staticfiles/
+static/
+
+
+# --- Node / React ---
+node_modules/
+dist/
+build/
+*.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+
+
+# MacOS
+.DS_Store
