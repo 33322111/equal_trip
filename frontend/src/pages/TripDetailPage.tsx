@@ -1,54 +1,172 @@
-import React, { useEffect, useState } from "react";
-import { Container, Typography, Paper, Box, Button } from "@mui/material";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Container,
+  Typography,
+  Paper,
+  Box,
+  Button,
+  TextField,
+  Alert,
+  MenuItem,
+  Divider,
+  Stack,
+} from "@mui/material";
 import { useParams } from "react-router-dom";
 import { createInvite, getTrip, TripDetail } from "../api/trips";
 import { useAuth } from "../context/AuthContext";
+import {
+  listCategories,
+  listExpenses,
+  createExpense,
+  getBalance,
+  Category,
+  Expense,
+  BalanceResponse,
+} from "../api/expenses";
 
 export default function TripDetailPage() {
   const { id } = useParams();
   const tripId = Number(id);
 
   const { user } = useAuth();
+
   const [trip, setTrip] = useState<TripDetail | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
-  const load = async () => {
-    const data = await getTrip(tripId);
-    setTrip(data);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [balance, setBalance] = useState<BalanceResponse | null>(null);
+
+  const [formTitle, setFormTitle] = useState("");
+  const [formAmount, setFormAmount] = useState<string>("");
+  const [formCategoryId, setFormCategoryId] = useState<number | "">("");
+  const [formCurrency, setFormCurrency] = useState<string>("RUB");
+
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const membersById = useMemo(() => {
+    const map = new Map<number, { username: string; email: string }>();
+    if (trip?.members) {
+      for (const m of trip.members) {
+        map.set(m.user.id, { username: m.user.username, email: m.user.email });
+      }
+    }
+    return map;
+  }, [trip]);
+
+  const loadAll = async () => {
+    setError(null);
+    try {
+      const [tripData, cats, exp, bal] = await Promise.all([
+        getTrip(tripId),
+        listCategories().catch(() => [] as Category[]), // если категорий нет/не доступно — не падаем
+        listExpenses(tripId),
+        getBalance(tripId),
+      ]);
+      setTrip(tripData);
+      setCategories(cats);
+      setExpenses(exp);
+      setBalance(bal);
+    } catch (e) {
+      setError("Не удалось загрузить данные поездки.");
+    }
   };
 
   useEffect(() => {
-    load();
+    if (!Number.isFinite(tripId)) return;
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
   const isOwner = trip?.owner?.id === user?.id;
 
   const onCreateInvite = async () => {
-    const { token } = await createInvite(tripId);
-    const url = `${window.location.origin}/join/${token}`;
-    setInviteUrl(url);
-    await navigator.clipboard.writeText(url);
+    try {
+      setError(null);
+      const { token } = await createInvite(tripId);
+      const url = `${window.location.origin}/join/${token}`;
+      setInviteUrl(url);
+      await navigator.clipboard.writeText(url);
+    } catch (e) {
+      setError("Не удалось создать приглашение.");
+    }
+  };
+
+  const onAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const amountNum = Number(formAmount);
+    if (!formTitle.trim()) {
+      setError("Введите название расхода.");
+      return;
+    }
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      setError("Введите корректную сумму > 0.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await createExpense(tripId, {
+        title: formTitle.trim(),
+        amount: amountNum,
+        currency: formCurrency,
+        category_id: formCategoryId === "" ? null : formCategoryId,
+        // spent_at добавлю позже (datepicker)
+      });
+
+      // обновляем список + баланс
+      const [exp, bal] = await Promise.all([listExpenses(tripId), getBalance(tripId)]);
+      setExpenses(exp);
+      setBalance(bal);
+
+      // чистим форму
+      setFormTitle("");
+      setFormAmount("");
+      setFormCategoryId("");
+      setFormCurrency("RUB");
+    } catch (err) {
+      setError("Не удалось добавить расход. Проверь данные и попробуй снова.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!trip) return <div>Загрузка...</div>;
 
   return (
-    <Container sx={{ mt: 4 }}>
-      <Typography variant="h4" gutterBottom>{trip.title}</Typography>
+    <Container sx={{ mt: 4, mb: 6 }}>
+      <Typography variant="h4" gutterBottom>
+        {trip.title}
+      </Typography>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {/* УЧАСТНИКИ */}
       <Paper sx={{ p: 2, mb: 3 }}>
         <Typography variant="h6">Участники</Typography>
         {trip.members.map((m) => (
           <Box key={m.id} display="flex" justifyContent="space-between" py={0.5}>
-            <Typography>{m.user.username} ({m.user.email})</Typography>
+            <Typography>
+              {m.user.username} ({m.user.email})
+            </Typography>
             <Typography color="text.secondary">{m.role}</Typography>
           </Box>
         ))}
       </Paper>
 
+      {/* INVITE */}
       {isOwner && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>Приглашение по ссылке</Typography>
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Приглашение по ссылке
+          </Typography>
           <Button variant="contained" onClick={onCreateInvite}>
             Сгенерировать ссылку (и скопировать)
           </Button>
@@ -59,6 +177,124 @@ export default function TripDetailPage() {
           )}
         </Paper>
       )}
+
+      {/* РАСХОДЫ */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Расходы
+        </Typography>
+
+        {/* Форма добавления */}
+        <Box component="form" onSubmit={onAddExpense} sx={{ mb: 2 }}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+            <TextField
+              label="Название"
+              value={formTitle}
+              onChange={(e) => setFormTitle(e.target.value)}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Сумма"
+              value={formAmount}
+              onChange={(e) => setFormAmount(e.target.value)}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Валюта"
+              value={formCurrency}
+              onChange={(e) => setFormCurrency(e.target.value)}
+              sx={{ minWidth: 120 }}
+            />
+            <TextField
+              select
+              label="Категория"
+              value={formCategoryId}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFormCategoryId(v === "" ? "" : Number(v));
+              }}
+              sx={{ minWidth: 220 }}
+            >
+              <MenuItem value="">Без категории</MenuItem>
+              {categories.map((c) => (
+                <MenuItem key={c.id} value={c.id}>
+                  {c.name}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <Button type="submit" variant="contained" disabled={isSubmitting}>
+              Добавить
+            </Button>
+          </Stack>
+        </Box>
+
+        <Divider sx={{ mb: 2 }} />
+
+        {/* Список расходов */}
+        <Box display="flex" flexDirection="column" gap={1}>
+          {expenses.map((ex) => (
+            <Paper key={ex.id} variant="outlined" sx={{ p: 1.5 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography fontWeight={600}>{ex.title}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {ex.category ? ex.category.name : "Без категории"} • оплатил:{" "}
+                    {ex.created_by.username}
+                  </Typography>
+                </Box>
+                <Typography fontWeight={700}>
+                  {ex.amount} {ex.currency}
+                </Typography>
+              </Box>
+            </Paper>
+          ))}
+          {expenses.length === 0 && (
+            <Typography color="text.secondary">
+              Пока нет расходов. Добавь первый 🙂
+            </Typography>
+          )}
+        </Box>
+      </Paper>
+
+      {/* БАЛАНС */}
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          Баланс (кто кому должен)
+        </Typography>
+
+        {!balance ? (
+          <Typography color="text.secondary">Загрузка баланса...</Typography>
+        ) : balance.transfers.length === 0 ? (
+          <Typography color="text.secondary">
+            Баланс нулевой — никто никому не должен ✅
+          </Typography>
+        ) : (
+          <Box display="flex" flexDirection="column" gap={1}>
+            {balance.transfers.map((t, idx) => {
+              const from = membersById.get(t.from_user);
+              const to = membersById.get(t.to_user);
+              return (
+                <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
+                  <Typography>
+                    <b>{from?.username ?? `User#${t.from_user}`}</b> →{" "}
+                    <b>{to?.username ?? `User#${t.to_user}`}</b>:{" "}
+                    <b>{t.amount} RUB</b>
+                  </Typography>
+                </Paper>
+              );
+            })}
+          </Box>
+        )}
+      </Paper>
+
+      <Box mt={2}>
+        <Button variant="text" onClick={loadAll}>
+          Обновить данные
+        </Button>
+      </Box>
     </Container>
   );
 }

@@ -9,7 +9,7 @@ from .serializers import (
     TripInviteSerializer
 )
 from .permissions import IsTripMember
-
+from expenses.services import compute_balance
 
 class TripViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
@@ -45,6 +45,12 @@ class TripViewSet(viewsets.ModelViewSet):
 
         invite = TripInvite.objects.create(trip=trip, created_by=request.user)
         return Response(TripInviteSerializer(invite).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def balance(self, request, pk=None):
+        trip = self.get_object()
+        data = compute_balance(trip.id)
+        return Response(data)
 
 
 class InviteAcceptViewSet(viewsets.ViewSet):

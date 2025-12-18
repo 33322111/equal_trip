@@ -1,0 +1,87 @@
+from decimal import Decimal
+from django.contrib.auth import get_user_model
+from rest_framework import serializers
+from trips.models import Trip, TripMember
+from .models import Expense, ExpenseCategory, ExpenseShare
+
+User = get_user_model()
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExpenseCategory
+        fields = ("id", "name")
+
+
+class UserShortSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "username", "email")
+
+
+class ExpenseShareSerializer(serializers.ModelSerializer):
+    user = UserShortSerializer(read_only=True)
+
+    class Meta:
+        model = ExpenseShare
+        fields = ("id", "user", "weight")
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    created_by = UserShortSerializer(read_only=True)
+    category = CategorySerializer(read_only=True)
+    shares = ExpenseShareSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Expense
+        fields = (
+            "id", "trip", "title", "amount", "currency",
+            "category", "spent_at", "created_by", "created_at",
+            "shares",
+        )
+        read_only_fields = ("trip", "created_by", "created_at")
+
+
+class ExpenseCreateSerializer(serializers.ModelSerializer):
+    category_id = serializers.IntegerField(required=False, allow_null=True)
+    share_user_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False
+    )
+
+    class Meta:
+        model = Expense
+        fields = ("title", "amount", "currency", "spent_at", "category_id", "share_user_ids")
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        trip: Trip = self.context["trip"]
+
+        category_id = validated_data.pop("category_id", None)
+        share_user_ids = validated_data.pop("share_user_ids", None)
+
+        category = None
+        if category_id:
+            category = ExpenseCategory.objects.get(id=category_id)
+
+        expense = Expense.objects.create(
+            trip=trip,
+            created_by=request.user,
+            category=category,
+            **validated_data
+        )
+
+        # на кого делим:
+        if share_user_ids is None:
+            # по умолчанию: на всех участников поездки
+            share_user_ids = list(
+                TripMember.objects.filter(trip=trip).values_list("user_id", flat=True)
+            )
+
+        # создаём shares с равным weight=1
+        ExpenseShare.objects.bulk_create([
+            ExpenseShare(expense=expense, user_id=uid, weight=Decimal("1"))
+            for uid in share_user_ids
+        ])
+
+        return expense
