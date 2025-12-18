@@ -10,6 +10,8 @@ from .serializers import (
 )
 from .permissions import IsTripMember
 from expenses.services import compute_balance
+from expenses.stats import compute_stats
+
 
 class TripViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
@@ -50,6 +52,12 @@ class TripViewSet(viewsets.ModelViewSet):
     def balance(self, request, pk=None):
         trip = self.get_object()
         data = compute_balance(trip.id)
+        return Response(data)
+
+    @action(detail=True, methods=["get"])
+    def stats(self, request, pk=None):
+        trip = self.get_object()
+        data = compute_stats(trip)
         return Response(data)
 
 

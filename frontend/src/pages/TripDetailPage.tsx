@@ -23,6 +23,8 @@ import {
   Expense,
   BalanceResponse,
 } from "../api/expenses";
+import { getTripStats, TripStats } from "../api/stats";
+import TripStatsView from "../components/TripStats";
 
 export default function TripDetailPage() {
   const { id } = useParams();
@@ -45,6 +47,8 @@ export default function TripDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [stats, setStats] = useState<TripStats | null>(null);
+
   const membersById = useMemo(() => {
     const map = new Map<number, { username: string; email: string }>();
     if (trip?.members) {
@@ -58,12 +62,14 @@ export default function TripDetailPage() {
   const loadAll = async () => {
     setError(null);
     try {
-      const [tripData, cats, exp, bal] = await Promise.all([
+      const [tripData, cats, exp, bal, st] = await Promise.all([
         getTrip(tripId),
-        listCategories().catch(() => [] as Category[]), // если категорий нет/не доступно — не падаем
+        listCategories(),
         listExpenses(tripId),
         getBalance(tripId),
+        getTripStats(tripId),
       ]);
+      setStats(st);
       setTrip(tripData);
       setCategories(cats);
       setExpenses(exp);
@@ -295,6 +301,12 @@ export default function TripDetailPage() {
           Обновить данные
         </Button>
       </Box>
+
+      {stats && (
+        <Box mt={3}>
+          <TripStatsView stats={stats} />
+        </Box>
+      )}
     </Container>
   );
 }
