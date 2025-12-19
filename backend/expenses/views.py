@@ -9,6 +9,10 @@ from .serializers import (
     ExpenseSerializer, ExpenseCreateSerializer,
     CategorySerializer
 )
+from django.shortcuts import get_object_or_404
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from .export import export_trip_csv
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -51,3 +55,12 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
         expense = serializer.save()
 
         return Response(ExpenseSerializer(expense).data, status=status.HTTP_201_CREATED)
+
+
+class TripExportCSVView(APIView):
+    permission_classes = [IsAuthenticated, IsTripMember]
+
+    def get(self, request, trip_id: int):
+        trip = get_object_or_404(Trip, id=trip_id)
+        self.check_object_permissions(request, trip)
+        return export_trip_csv(trip)
