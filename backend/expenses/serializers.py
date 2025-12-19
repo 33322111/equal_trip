@@ -36,8 +36,9 @@ class ExpenseSerializer(serializers.ModelSerializer):
         model = Expense
         fields = (
             "id", "trip", "title", "amount", "currency",
-            "category", "spent_at", "created_by", "created_at",
-            "shares",
+            "category", "spent_at",
+            "lat", "lng",
+            "created_by", "created_at", "shares",
         )
         read_only_fields = ("trip", "created_by", "created_at")
 
@@ -48,10 +49,17 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
         child=serializers.IntegerField(),
         required=False
     )
+    lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False)
+    lng = serializers.DecimalField(max_digits=9, decimal_places=6, required=False)
 
     class Meta:
         model = Expense
-        fields = ("title", "amount", "currency", "spent_at", "category_id", "share_user_ids")
+        fields = (
+            "title", "amount", "currency",
+            "spent_at", "category_id",
+            "lat", "lng",
+            "share_user_ids",
+        )
 
     def create(self, validated_data):
         request = self.context["request"]

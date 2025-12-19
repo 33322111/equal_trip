@@ -39,6 +39,8 @@ export async function createExpense(
     currency?: string;
     spent_at?: string | null;
     category_id?: number | null;
+    lat: number,
+    lng: number,
   }
 ): Promise<Expense> {
   const res = await api.post(`/trips/${tripId}/expenses/`, payload);

@@ -25,6 +25,7 @@ import {
 } from "../api/expenses";
 import { getTripStats, TripStats } from "../api/stats";
 import TripStatsView from "../components/TripStats";
+import TripMap from "../components/TripMap";
 
 export default function TripDetailPage() {
   const { id } = useParams();
@@ -120,6 +121,8 @@ export default function TripDetailPage() {
         amount: amountNum,
         currency: formCurrency,
         category_id: formCategoryId === "" ? null : formCategoryId,
+        lat: 51.751244,
+        lng: 37.618423,
         // spent_at добавлю позже (datepicker)
       });
 
@@ -264,6 +267,10 @@ export default function TripDetailPage() {
           )}
         </Box>
       </Paper>
+
+      <Box mt={3}>
+        <TripMap expenses={expenses} />
+      </Box>
 
       {/* БАЛАНС */}
       <Paper sx={{ p: 2 }}>
