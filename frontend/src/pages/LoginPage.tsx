@@ -67,6 +67,9 @@ const LoginPage: React.FC = () => {
         <Typography variant="body2">
           Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
         </Typography>
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          <Link to="/forgot-password">Забыли пароль?</Link>
+        </Typography>
       </Box>
     </Container>
   );

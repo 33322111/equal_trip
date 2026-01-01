@@ -26,7 +26,7 @@ import {
 import { getTripStats, TripStats } from "../api/stats";
 import TripStatsView from "../components/TripStats";
 import TripMap from "../components/TripMap";
-import { downloadTripCsv } from "../api/exports";
+import { downloadTripCsv, downloadTripPdf } from "../api/exports";
 
 export default function TripDetailPage() {
   const { id } = useParams();
@@ -318,6 +318,10 @@ export default function TripDetailPage() {
 
       <Button variant="outlined" onClick={() => downloadTripCsv(tripId)}>
         Экспорт CSV
+      </Button>
+
+      <Button variant="outlined" onClick={() => downloadTripPdf(tripId)}>
+        Экспорт PDF
       </Button>
     </Container>
   );

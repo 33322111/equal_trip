@@ -12,6 +12,10 @@ import JoinByTokenPage from './pages/JoinByInvitePage.tsx';
 import { PrivateRoute } from './components/PrivateRoute.tsx';
 import { useAuth } from './context/AuthContext.tsx';
 
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+
+
 const App: React.FC = () => {
   const { isAuthenticated } = useAuth();
 
@@ -78,6 +82,9 @@ const App: React.FC = () => {
             </PrivateRoute>
           }
         />
+
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
       </Routes>
     </>
   );

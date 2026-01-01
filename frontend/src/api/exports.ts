@@ -22,3 +22,23 @@ export async function downloadTripCsv(tripId: number) {
   a.remove();
   window.URL.revokeObjectURL(url);
 }
+
+export async function downloadTripPdf(tripId: number) {
+  const res = await api.get(`/trips/${tripId}/export/pdf/`, { responseType: "blob" });
+
+  const cd = res.headers["content-disposition"] as string | undefined;
+  let filename = `trip_${tripId}_report.pdf`;
+  if (cd) {
+    const match = cd.match(/filename="?([^"]+)"?/);
+    if (match?.[1]) filename = match[1];
+  }
+
+  const url = window.URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}

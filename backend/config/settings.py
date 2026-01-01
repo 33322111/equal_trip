@@ -40,10 +40,11 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'corsheaders',
-    'users',
+    'users.apps.UsersConfig',
     'rest_framework_simplejwt.token_blacklist',
     'trips',
-    'expenses'
+    'expenses',
+    'django_rest_passwordreset'
 ]
 
 MIDDLEWARE = [
@@ -144,3 +145,8 @@ REST_FRAMEWORK = {
 }
 
 AUTH_USER_MODEL = 'users.User'
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = "industroo@yandex.com"
+
+FRONTEND_URL = "http://localhost:5173"
