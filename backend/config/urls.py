@@ -21,7 +21,9 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from users.views import RegisterView, MeView
+from users.views import RegisterView, MeView, ProfileView
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -36,4 +38,12 @@ urlpatterns = [
     path("api/", include("expenses.urls")),
 
     path("api/password_reset/", include("django_rest_passwordreset.urls", namespace="password_reset")),
+    path("api/profile/", ProfileView.as_view()),
 ]
+
+
+if settings.DEBUG:
+    urlpatterns += static(
+        settings.MEDIA_URL,
+        document_root=settings.MEDIA_ROOT
+    )

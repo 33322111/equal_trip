@@ -14,6 +14,7 @@ import { useAuth } from './context/AuthContext.tsx';
 
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import ProfilePage from "./pages/ProfilePage";
 
 
 const App: React.FC = () => {
@@ -85,6 +86,7 @@ const App: React.FC = () => {
 
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </>
   );

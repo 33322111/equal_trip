@@ -150,3 +150,6 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = "industroo@yandex.com"
 
 FRONTEND_URL = "http://localhost:5173"
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
