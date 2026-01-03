@@ -10,23 +10,31 @@ import {
   MenuItem,
   Divider,
   Stack,
+  IconButton,
 } from "@mui/material";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { useParams } from "react-router-dom";
+
 import { createInvite, getTrip, TripDetail } from "../api/trips";
 import { useAuth } from "../context/AuthContext";
+
 import {
   listCategories,
   listExpenses,
   createExpense,
   getBalance,
+  deleteExpense,
   Category,
   Expense,
   BalanceResponse,
 } from "../api/expenses";
+
 import { getTripStats, TripStats } from "../api/stats";
 import TripStatsView from "../components/TripStats";
 import TripMap from "../components/TripMap";
 import { downloadTripCsv, downloadTripPdf } from "../api/exports";
+import ExpenseEditDialog from "../components/ExpenseEditDialog";
 
 export default function TripDetailPage() {
   const { id } = useParams();
@@ -40,7 +48,9 @@ export default function TripDetailPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
+  const [stats, setStats] = useState<TripStats | null>(null);
 
+  // Create expense form
   const [formTitle, setFormTitle] = useState("");
   const [formAmount, setFormAmount] = useState<string>("");
   const [formCategoryId, setFormCategoryId] = useState<number | "">("");
@@ -49,7 +59,9 @@ export default function TripDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [stats, setStats] = useState<TripStats | null>(null);
+  // Edit dialog
+  const [editOpen, setEditOpen] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
 
   const membersById = useMemo(() => {
     const map = new Map<number, { username: string; email: string }>();
@@ -71,11 +83,11 @@ export default function TripDetailPage() {
         getBalance(tripId),
         getTripStats(tripId),
       ]);
-      setStats(st);
       setTrip(tripData);
       setCategories(cats);
       setExpenses(exp);
       setBalance(bal);
+      setStats(st);
     } catch (e) {
       setError("Не удалось загрузить данные поездки.");
     }
@@ -122,17 +134,14 @@ export default function TripDetailPage() {
         amount: amountNum,
         currency: formCurrency,
         category_id: formCategoryId === "" ? null : formCategoryId,
-        lat: 51.751244,
+        // MVP координаты — можно позже сделать выбор на карте
+        lat: 55.751244,
         lng: 37.618423,
-        // spent_at добавлю позже (datepicker)
       });
 
-      // обновляем список + баланс
-      const [exp, bal] = await Promise.all([listExpenses(tripId), getBalance(tripId)]);
-      setExpenses(exp);
-      setBalance(bal);
+      // Лучше обновить всё, чтобы баланс/статистика тоже пересчитались
+      await loadAll();
 
-      // чистим форму
       setFormTitle("");
       setFormAmount("");
       setFormCategoryId("");
@@ -142,6 +151,29 @@ export default function TripDetailPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const onDeleteExpense = async (expenseId: number) => {
+    const ok = window.confirm("Удалить расход?");
+    if (!ok) return;
+
+    try {
+      setError(null);
+      await deleteExpense(tripId, expenseId);
+      await loadAll();
+    } catch (e) {
+      setError("Не удалось удалить расход.");
+    }
+  };
+
+  const onOpenEdit = (ex: Expense) => {
+    setSelectedExpense(ex);
+    setEditOpen(true);
+  };
+
+  const onCloseEdit = () => {
+    setEditOpen(false);
+    setSelectedExpense(null);
   };
 
   if (!trip) return <div>Загрузка...</div>;
@@ -247,34 +279,60 @@ export default function TripDetailPage() {
         <Box display="flex" flexDirection="column" gap={1}>
           {expenses.map((ex) => (
             <Paper key={ex.id} variant="outlined" sx={{ p: 1.5 }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Box>
-                  <Typography fontWeight={600}>{ex.title}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {ex.category ? ex.category.name : "Без категории"} • оплатил:{" "}
-                    {ex.created_by.username}
+              <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography fontWeight={600} noWrap>
+                    {ex.title}
                   </Typography>
+                  <Typography variant="body2" color="text.secondary" noWrap>
+                    {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
+                  </Typography>
+
+                  {/* Покажем на кого делится */}
+                  {ex.shares?.length ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      Делится на:{" "}
+                      {ex.shares
+                        .map((s) => membersById.get(s.user.id)?.username ?? s.user.username)
+                        .join(", ")}
+                    </Typography>
+                  ) : null}
                 </Box>
-                <Typography fontWeight={700}>
-                  {ex.amount} {ex.currency}
-                </Typography>
+
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography fontWeight={700} sx={{ whiteSpace: "nowrap" }}>
+                    {ex.amount} {ex.currency}
+                  </Typography>
+
+                  <IconButton size="small" onClick={() => onOpenEdit(ex)} aria-label="edit-expense">
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+
+                  <IconButton
+                    size="small"
+                    onClick={() => onDeleteExpense(ex.id)}
+                    aria-label="delete-expense"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
               </Box>
             </Paper>
           ))}
+
           {expenses.length === 0 && (
-            <Typography color="text.secondary">
-              Пока нет расходов. Добавь первый 🙂
-            </Typography>
+            <Typography color="text.secondary">Пока нет расходов. Добавь первый 🙂</Typography>
           )}
         </Box>
       </Paper>
 
+      {/* Карта */}
       <Box mt={3}>
         <TripMap expenses={expenses} />
       </Box>
 
       {/* БАЛАНС */}
-      <Paper sx={{ p: 2 }}>
+      <Paper sx={{ p: 2, mt: 3 }}>
         <Typography variant="h6" gutterBottom>
           Баланс (кто кому должен)
         </Typography>
@@ -294,8 +352,7 @@ export default function TripDetailPage() {
                 <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
                   <Typography>
                     <b>{from?.username ?? `User#${t.from_user}`}</b> →{" "}
-                    <b>{to?.username ?? `User#${t.to_user}`}</b>:{" "}
-                    <b>{t.amount} RUB</b>
+                    <b>{to?.username ?? `User#${t.to_user}`}</b>: <b>{t.amount} RUB</b>
                   </Typography>
                 </Paper>
               );
@@ -304,25 +361,40 @@ export default function TripDetailPage() {
         )}
       </Paper>
 
-      <Box mt={2}>
-        <Button variant="text" onClick={loadAll}>
-          Обновить данные
-        </Button>
-      </Box>
-
+      {/* Статистика */}
       {stats && (
         <Box mt={3}>
           <TripStatsView stats={stats} />
         </Box>
       )}
 
-      <Button variant="outlined" onClick={() => downloadTripCsv(tripId)}>
-        Экспорт CSV
-      </Button>
+      {/* Экспорт + обновление */}
+      <Box mt={3} display="flex" gap={2} flexWrap="wrap">
+        <Button variant="text" onClick={loadAll}>
+          Обновить данные
+        </Button>
 
-      <Button variant="outlined" onClick={() => downloadTripPdf(tripId)}>
-        Экспорт PDF
-      </Button>
+        <Button variant="outlined" onClick={() => downloadTripCsv(tripId)}>
+          Экспорт CSV
+        </Button>
+
+        <Button variant="outlined" onClick={() => downloadTripPdf(tripId)}>
+          Экспорт PDF
+        </Button>
+      </Box>
+
+      {/* Диалог редактирования */}
+      {trip && (
+        <ExpenseEditDialog
+          open={editOpen}
+          onClose={onCloseEdit}
+          tripId={tripId}
+          trip={trip}
+          categories={categories}
+          expense={selectedExpense}
+          onSaved={loadAll}
+        />
+      )}
     </Container>
   );
 }

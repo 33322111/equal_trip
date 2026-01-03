@@ -51,3 +51,25 @@ export async function getBalance(tripId: number): Promise<BalanceResponse> {
   const res = await api.get(`/trips/${tripId}/balance/`);
   return res.data;
 }
+
+export async function deleteExpense(tripId: number, expenseId: number) {
+  await api.delete(`/trips/${tripId}/expenses/${expenseId}/`);
+}
+
+export async function updateExpense(
+  tripId: number,
+  expenseId: number,
+  payload: {
+    title?: string;
+    amount?: number | string;
+    currency?: string;
+    spent_at?: string | null;
+    category_id?: number | null;
+    lat?: number | null;
+    lng?: number | null;
+    share_user_ids?: number[];
+  }
+): Promise<Expense> {
+  const res = await api.patch(`/trips/${tripId}/expenses/${expenseId}/`, payload);
+  return res.data;
+}

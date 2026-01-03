@@ -7,7 +7,7 @@ from trips.permissions import IsTripMember
 from .models import Expense, ExpenseCategory
 from .serializers import (
     ExpenseSerializer, ExpenseCreateSerializer,
-    CategorySerializer
+    CategorySerializer, ExpenseUpdateSerializer
 )
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
@@ -30,7 +30,8 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         trip = self.get_trip()
-        return Expense.objects.filter(trip=trip).select_related("created_by", "category").prefetch_related("shares__user").order_by("-created_at")
+        return Expense.objects.filter(trip=trip).select_related("created_by", "category").prefetch_related(
+            "shares__user").order_by("-created_at")
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -38,9 +39,7 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
         return ExpenseSerializer
 
     def get_object(self):
-        obj = super().get_object()
-        self.check_object_permissions(self.request, obj.trip)  # IsTripMember по trip
-        return obj
+        return super().get_object()
 
     def list(self, request, *args, **kwargs):
         trip = self.get_trip()
@@ -56,6 +55,13 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
         expense = serializer.save()
 
         return Response(ExpenseSerializer(expense).data, status=status.HTTP_201_CREATED)
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return ExpenseCreateSerializer
+        if self.action in ("update", "partial_update"):
+            return ExpenseUpdateSerializer
+        return ExpenseSerializer
 
 
 class TripExportCSVView(APIView):

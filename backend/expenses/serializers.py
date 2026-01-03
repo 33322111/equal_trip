@@ -93,3 +93,45 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
         ])
 
         return expense
+
+
+class ExpenseUpdateSerializer(serializers.ModelSerializer):
+    category_id = serializers.IntegerField(required=False, allow_null=True)
+    share_user_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False
+    )
+    lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
+    lng = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
+
+    class Meta:
+        model = Expense
+        fields = ("title", "amount", "currency", "spent_at", "category_id", "lat", "lng", "share_user_ids")
+
+    def update(self, instance: Expense, validated_data):
+        category_id = validated_data.pop("category_id", None)
+        share_user_ids = validated_data.pop("share_user_ids", None)
+
+        if category_id is not None:
+            instance.category = ExpenseCategory.objects.get(id=category_id) if category_id else None
+
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+
+        instance.save()
+
+        # Обновляем shares, если передали share_user_ids
+        if share_user_ids is not None:
+            # Проверим: все users должны быть участниками поездки
+            member_ids = set(TripMember.objects.filter(trip=instance.trip).values_list("user_id", flat=True))
+            if not set(share_user_ids).issubset(member_ids):
+                raise serializers.ValidationError("Some users are not members of the trip.")
+
+            # Пересоздаём shares
+            ExpenseShare.objects.filter(expense=instance).delete()
+            ExpenseShare.objects.bulk_create([
+                ExpenseShare(expense=instance, user_id=uid, weight=Decimal("1"))
+                for uid in share_user_ids
+            ])
+
+        return instance
