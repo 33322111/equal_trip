@@ -42,3 +42,19 @@ export async function downloadTripPdf(tripId: number) {
   a.remove();
   window.URL.revokeObjectURL(url);
 }
+
+export async function downloadReceipt(url: string, filename: string) {
+  // url вида /media/receipts/xxx.jpg  -> делаем абсолютный
+  const abs = url.startsWith("http") ? url : `http://localhost:8000${url}`;
+
+  const res = await api.get(abs, { responseType: "blob" });
+
+  const blobUrl = window.URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(blobUrl);
+}

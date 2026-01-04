@@ -11,9 +11,19 @@ import {
   Divider,
   Stack,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
+
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import ImageIcon from "@mui/icons-material/Image";
+import DownloadIcon from "@mui/icons-material/Download";
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+
 import { useParams } from "react-router-dom";
 
 import { createInvite, getTrip, TripDetail } from "../api/trips";
@@ -25,6 +35,8 @@ import {
   createExpense,
   getBalance,
   deleteExpense,
+  uploadExpenseReceipt,
+  deleteExpenseReceipt,
   Category,
   Expense,
   BalanceResponse,
@@ -33,8 +45,10 @@ import {
 import { getTripStats, TripStats } from "../api/stats";
 import TripStatsView from "../components/TripStats";
 import TripMap from "../components/TripMap";
-import { downloadTripCsv, downloadTripPdf } from "../api/exports";
+import { downloadTripCsv, downloadTripPdf, downloadReceipt } from "../api/exports";
 import ExpenseEditDialog from "../components/ExpenseEditDialog";
+
+const API_BASE_URL = "http://localhost:8000";
 
 export default function TripDetailPage() {
   const { id } = useParams();
@@ -62,6 +76,14 @@ export default function TripDetailPage() {
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+
+  // Receipt dialog
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  const [receiptTitle, setReceiptTitle] = useState<string>("");
+  const [receiptExpenseId, setReceiptExpenseId] = useState<number | null>(null);
+
+  const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
 
   const membersById = useMemo(() => {
     const map = new Map<number, { username: string; email: string }>();
@@ -113,6 +135,25 @@ export default function TripDetailPage() {
     }
   };
 
+  const onDeleteReceipt = async () => {
+  if (!receiptExpenseId) return;
+
+  const ok = window.confirm("Удалить чек у расхода?");
+  if (!ok) return;
+
+  try {
+    setError(null);
+    await deleteExpenseReceipt(tripId, receiptExpenseId);
+    setReceiptOpen(false);
+    setReceiptUrl(null);
+    setReceiptTitle("");
+    setReceiptExpenseId(null);
+    await loadAll();
+  } catch (e) {
+    setError("Не удалось удалить чек.");
+  }
+};
+
   const onAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -134,12 +175,11 @@ export default function TripDetailPage() {
         amount: amountNum,
         currency: formCurrency,
         category_id: formCategoryId === "" ? null : formCategoryId,
-        // MVP координаты — можно позже сделать выбор на карте
+        // MVP координаты — можно позже сделать выбор точки на карте
         lat: 55.751244,
         lng: 37.618423,
       });
 
-      // Лучше обновить всё, чтобы баланс/статистика тоже пересчитались
       await loadAll();
 
       setFormTitle("");
@@ -174,6 +214,33 @@ export default function TripDetailPage() {
   const onCloseEdit = () => {
     setEditOpen(false);
     setSelectedExpense(null);
+  };
+
+  const onUploadReceipt = async (ex: Expense, file: File, inputEl: HTMLInputElement) => {
+    try {
+      setError(null);
+      await uploadExpenseReceipt(tripId, ex.id, file);
+      await loadAll();
+    } catch (e) {
+      setError("Не удалось загрузить чек.");
+    } finally {
+      // чтобы можно было выбрать тот же файл повторно
+      inputEl.value = "";
+    }
+  };
+
+  const onOpenReceipt = (ex: Expense) => {
+    if (!ex.receipt) return;
+    setReceiptTitle(ex.title);
+    setReceiptUrl(toAbsUrl(ex.receipt));
+    setReceiptOpen(true);
+    setReceiptExpenseId(ex.id);
+  };
+
+  const onCloseReceipt = () => {
+    setReceiptOpen(false);
+    setReceiptTitle("");
+    setReceiptUrl(null);
   };
 
   if (!trip) return <div>Загрузка...</div>;
@@ -288,7 +355,7 @@ export default function TripDetailPage() {
                     {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
                   </Typography>
 
-                  {/* Покажем на кого делится */}
+                  {/* На кого делится */}
                   {ex.shares?.length ? (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                       Делится на:{" "}
@@ -297,6 +364,11 @@ export default function TripDetailPage() {
                         .join(", ")}
                     </Typography>
                   ) : null}
+
+                  {/* Статус чека */}
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Чек: {ex.receipt ? "прикреплён" : "нет"}
+                  </Typography>
                 </Box>
 
                 <Box display="flex" alignItems="center" gap={1}>
@@ -304,15 +376,49 @@ export default function TripDetailPage() {
                     {ex.amount} {ex.currency}
                   </Typography>
 
+                  {/* Загрузка чека */}
+                  <IconButton size="small" component="label" aria-label="upload-receipt">
+                    <AttachFileIcon fontSize="small" />
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        onUploadReceipt(ex, file, e.currentTarget);
+                      }}
+                    />
+                  </IconButton>
+
+                  {/* Просмотр/скачивание чека */}
+                  {ex.receipt ? (
+                    <>
+                      <IconButton
+                        size="small"
+                        onClick={() => onOpenReceipt(ex)}
+                        aria-label="view-receipt"
+                      >
+                        <ImageIcon fontSize="small" />
+                      </IconButton>
+
+                      <IconButton
+                        size="small"
+                        onClick={() => downloadReceipt(ex.receipt!, `receipt_${ex.id}.jpg`)}
+                        aria-label="download-receipt"
+                      >
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                    </>
+                  ) : null}
+
+                  {/* Редактирование */}
                   <IconButton size="small" onClick={() => onOpenEdit(ex)} aria-label="edit-expense">
                     <EditIcon fontSize="small" />
                   </IconButton>
 
-                  <IconButton
-                    size="small"
-                    onClick={() => onDeleteExpense(ex.id)}
-                    aria-label="delete-expense"
-                  >
+                  {/* Удаление */}
+                  <IconButton size="small" onClick={() => onDeleteExpense(ex.id)} aria-label="delete-expense">
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Box>
@@ -331,7 +437,7 @@ export default function TripDetailPage() {
         <TripMap expenses={expenses} />
       </Box>
 
-      {/* БАЛАНС */}
+      {/* Баланс */}
       <Paper sx={{ p: 2, mt: 3 }}>
         <Typography variant="h6" gutterBottom>
           Баланс (кто кому должен)
@@ -340,9 +446,7 @@ export default function TripDetailPage() {
         {!balance ? (
           <Typography color="text.secondary">Загрузка баланса...</Typography>
         ) : balance.transfers.length === 0 ? (
-          <Typography color="text.secondary">
-            Баланс нулевой — никто никому не должен ✅
-          </Typography>
+          <Typography color="text.secondary">Баланс нулевой — никто никому не должен ✅</Typography>
         ) : (
           <Box display="flex" flexDirection="column" gap={1}>
             {balance.transfers.map((t, idx) => {
@@ -395,6 +499,33 @@ export default function TripDetailPage() {
           onSaved={loadAll}
         />
       )}
+
+      {/* Диалог просмотра чека */}
+      <Dialog open={receiptOpen} onClose={onCloseReceipt} maxWidth="md" fullWidth>
+        <DialogTitle>Чек: {receiptTitle}</DialogTitle>
+        <DialogContent dividers>
+          {receiptUrl ? (
+            <Box display="flex" justifyContent="center">
+              <img src={receiptUrl} alt="receipt" style={{ maxWidth: "100%", height: "auto" }} />
+            </Box>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          {receiptUrl ? (
+            <Button onClick={() => downloadReceipt(receiptUrl!, `receipt.jpg`)}>Скачать</Button>
+          ) : null}
+          {receiptUrl ? (
+          <Button
+            color="error"
+            onClick={onDeleteReceipt}
+            startIcon={<DeleteForeverIcon />}
+          >
+            Удалить
+          </Button>
+        ) : null}
+          <Button onClick={onCloseReceipt}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

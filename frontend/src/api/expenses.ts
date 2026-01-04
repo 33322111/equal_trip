@@ -11,6 +11,7 @@ export type Expense = {
   created_at: string;
   created_by: { id: number; username: string; email: string };
   category: Category | null;
+  receipt?: string | null;
   shares: { id: number; user: { id: number; username: string; email: string }; weight: string }[];
 };
 
@@ -71,5 +72,19 @@ export async function updateExpense(
   }
 ): Promise<Expense> {
   const res = await api.patch(`/trips/${tripId}/expenses/${expenseId}/`, payload);
+  return res.data;
+}
+
+export async function uploadExpenseReceipt(tripId: number, expenseId: number, file: File): Promise<Expense> {
+  const form = new FormData();
+  form.append("receipt", file);
+
+  const res = await api.patch(`/trips/${tripId}/expenses/${expenseId}/`, form);
+  return res.data;
+}
+
+export async function deleteExpenseReceipt(tripId: number, expenseId: number): Promise<Expense> {
+  // чтобы удалить файл – отправим receipt = null
+  const res = await api.patch(`/trips/${tripId}/expenses/${expenseId}/`, { receipt: null });
   return res.data;
 }

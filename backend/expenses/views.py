@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from trips.models import Trip, TripMember
 from trips.permissions import IsTripMember
@@ -24,6 +25,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 class TripExpenseViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsTripMember]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_trip(self) -> Trip:
         return Trip.objects.get(id=self.kwargs["trip_id"])

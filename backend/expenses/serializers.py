@@ -38,6 +38,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "id", "trip", "title", "amount", "currency",
             "category", "spent_at",
             "lat", "lng",
+            "receipt",
             "created_by", "created_at", "shares",
         )
         read_only_fields = ("trip", "created_by", "created_at")
@@ -106,7 +107,7 @@ class ExpenseUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Expense
-        fields = ("title", "amount", "currency", "spent_at", "category_id", "lat", "lng", "share_user_ids")
+        fields = ("title", "amount", "currency", "spent_at", "category_id", "lat", "lng", "share_user_ids", "receipt")
 
     def update(self, instance: Expense, validated_data):
         category_id = validated_data.pop("category_id", None)

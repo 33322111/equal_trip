@@ -26,6 +26,8 @@ class Expense(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    receipt = models.ImageField(upload_to="receipts/", null=True, blank=True)
+
     def __str__(self):
         return f"{self.trip_id}: {self.title} {self.amount} {self.currency}"
 
