@@ -44,7 +44,8 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'trips',
     'expenses',
-    'django_rest_passwordreset'
+    'django_rest_passwordreset',
+    'payments'
 ]
 
 MIDDLEWARE = [

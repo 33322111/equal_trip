@@ -23,6 +23,8 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import ImageIcon from "@mui/icons-material/Image";
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import PaidIcon from "@mui/icons-material/Paid";
 
 import { useParams } from "react-router-dom";
 
@@ -48,6 +50,14 @@ import TripMap from "../components/TripMap";
 import { downloadTripCsv, downloadTripPdf, downloadReceipt } from "../api/exports";
 import ExpenseEditDialog from "../components/ExpenseEditDialog";
 
+import {
+  listSettlements,
+  createSettlement,
+  confirmSettlement,
+  deleteSettlement,
+  Settlement,
+} from "../api/settlements";
+
 const API_BASE_URL = "http://localhost:8000";
 
 export default function TripDetailPage() {
@@ -63,6 +73,9 @@ export default function TripDetailPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
+
+  // Settlements
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
 
   // Create expense form
   const [formTitle, setFormTitle] = useState("");
@@ -83,6 +96,19 @@ export default function TripDetailPage() {
   const [receiptTitle, setReceiptTitle] = useState<string>("");
   const [receiptExpenseId, setReceiptExpenseId] = useState<number | null>(null);
 
+  // Payment dialogs
+  const [payOpen, setPayOpen] = useState(false);
+  const [payFromUserId, setPayFromUserId] = useState<number | null>(null);
+  const [payToUserId, setPayToUserId] = useState<number | null>(null);
+  const [payAmount, setPayAmount] = useState<string>("");
+  const [payProofFile, setPayProofFile] = useState<File | null>(null);
+  const [paySubmitting, setPaySubmitting] = useState(false);
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmSettlementId, setConfirmSettlementId] = useState<number | null>(null);
+  const [confirmProofFile, setConfirmProofFile] = useState<File | null>(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+
   const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
 
   const membersById = useMemo(() => {
@@ -98,18 +124,20 @@ export default function TripDetailPage() {
   const loadAll = async () => {
     setError(null);
     try {
-      const [tripData, cats, exp, bal, st] = await Promise.all([
+      const [tripData, cats, exp, bal, st, pays] = await Promise.all([
         getTrip(tripId),
         listCategories(),
         listExpenses(tripId),
         getBalance(tripId),
         getTripStats(tripId),
+        listSettlements(tripId),
       ]);
       setTrip(tripData);
       setCategories(cats);
       setExpenses(exp);
       setBalance(bal);
       setStats(st);
+      setSettlements(pays);
     } catch (e) {
       setError("Не удалось загрузить данные поездки.");
     }
@@ -136,23 +164,23 @@ export default function TripDetailPage() {
   };
 
   const onDeleteReceipt = async () => {
-  if (!receiptExpenseId) return;
+    if (!receiptExpenseId) return;
 
-  const ok = window.confirm("Удалить чек у расхода?");
-  if (!ok) return;
+    const ok = window.confirm("Удалить чек у расхода?");
+    if (!ok) return;
 
-  try {
-    setError(null);
-    await deleteExpenseReceipt(tripId, receiptExpenseId);
-    setReceiptOpen(false);
-    setReceiptUrl(null);
-    setReceiptTitle("");
-    setReceiptExpenseId(null);
-    await loadAll();
-  } catch (e) {
-    setError("Не удалось удалить чек.");
-  }
-};
+    try {
+      setError(null);
+      await deleteExpenseReceipt(tripId, receiptExpenseId);
+      setReceiptOpen(false);
+      setReceiptUrl(null);
+      setReceiptTitle("");
+      setReceiptExpenseId(null);
+      await loadAll();
+    } catch (e) {
+      setError("Не удалось удалить чек.");
+    }
+  };
 
   const onAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -241,7 +269,102 @@ export default function TripDetailPage() {
     setReceiptOpen(false);
     setReceiptTitle("");
     setReceiptUrl(null);
+    setReceiptExpenseId(null);
   };
+
+  // PAYMENTS
+
+  const openPayDialogFromTransfer = (fromUser: number, toUser: number, amount: string) => {
+    setPayFromUserId(fromUser);
+    setPayToUserId(toUser);
+    setPayAmount(String(amount));
+    setPayProofFile(null);
+    setPayOpen(true);
+  };
+
+  const closePayDialog = () => {
+    setPayOpen(false);
+    setPayFromUserId(null);
+    setPayToUserId(null);
+    setPayAmount("");
+    setPayProofFile(null);
+  };
+
+  const submitPay = async () => {
+    if (!payFromUserId || !payToUserId) return;
+    const amt = Number(payAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setError("Введите корректную сумму оплаты > 0.");
+      return;
+    }
+
+    setPaySubmitting(true);
+    try {
+      setError(null);
+      const fd = new FormData();
+      fd.append("from_user", String(payFromUserId));
+      fd.append("to_user", String(payToUserId));
+      fd.append("amount", String(amt));
+      fd.append("currency", "RUB");
+      if (payProofFile) fd.append("proof", payProofFile);
+
+      await createSettlement(tripId, fd);
+      closePayDialog();
+      await loadAll(); // чтобы баланс пересчитался и settlement появился в списке
+    } catch (e) {
+      setError("Не удалось создать оплату.");
+    } finally {
+      setPaySubmitting(false);
+    }
+  };
+
+  const openConfirmDialog = (settlementId: number) => {
+    setConfirmSettlementId(settlementId);
+    setConfirmProofFile(null);
+    setConfirmOpen(true);
+  };
+
+  const closeConfirmDialog = () => {
+    setConfirmOpen(false);
+    setConfirmSettlementId(null);
+    setConfirmProofFile(null);
+  };
+
+  const submitConfirm = async () => {
+    if (!confirmSettlementId) return;
+
+    setConfirmSubmitting(true);
+    try {
+      setError(null);
+
+      // proof опционален
+      const fd = new FormData();
+      if (confirmProofFile) fd.append("proof", confirmProofFile);
+
+      await confirmSettlement(tripId, confirmSettlementId, fd);
+      closeConfirmDialog();
+      await loadAll(); // баланс пересчитался
+    } catch (e) {
+      setError("Не удалось подтвердить оплату.");
+    } finally {
+      setConfirmSubmitting(false);
+    }
+  };
+
+  const onDeleteSettlement = async (settlementId: number) => {
+    const ok = window.confirm("Удалить запись об оплате?");
+    if (!ok) return;
+
+    try {
+      setError(null);
+      await deleteSettlement(tripId, settlementId);
+      await loadAll();
+    } catch (e) {
+      setError("Не удалось удалить оплату.");
+    }
+  };
+
+  const canConfirm = (s: Settlement) => s.status === "pending" && s.to_user === user?.id;
 
   if (!trip) return <div>Загрузка...</div>;
 
@@ -394,11 +517,7 @@ export default function TripDetailPage() {
                   {/* Просмотр/скачивание чека */}
                   {ex.receipt ? (
                     <>
-                      <IconButton
-                        size="small"
-                        onClick={() => onOpenReceipt(ex)}
-                        aria-label="view-receipt"
-                      >
+                      <IconButton size="small" onClick={() => onOpenReceipt(ex)} aria-label="view-receipt">
                         <ImageIcon fontSize="small" />
                       </IconButton>
 
@@ -452,12 +571,109 @@ export default function TripDetailPage() {
             {balance.transfers.map((t, idx) => {
               const from = membersById.get(t.from_user);
               const to = membersById.get(t.to_user);
+              const canPay = t.from_user === user?.id;
+
               return (
                 <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
-                  <Typography>
-                    <b>{from?.username ?? `User#${t.from_user}`}</b> →{" "}
-                    <b>{to?.username ?? `User#${t.to_user}`}</b>: <b>{t.amount} RUB</b>
-                  </Typography>
+                  <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
+                    <Typography sx={{ minWidth: 0 }}>
+                      <b>{from?.username ?? `User#${t.from_user}`}</b> →{" "}
+                      <b>{to?.username ?? `User#${t.to_user}`}</b>: <b>{t.amount} RUB</b>
+                    </Typography>
+
+                    {canPay ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<PaidIcon />}
+                        onClick={() => openPayDialogFromTransfer(t.from_user, t.to_user, t.amount)}
+                      >
+                        Я оплатил
+                      </Button>
+                    ) : null}
+                  </Box>
+                </Paper>
+              );
+            })}
+          </Box>
+        )}
+      </Paper>
+
+      {/* Оплаты (Settlements) */}
+      <Paper sx={{ p: 2, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Оплаты
+        </Typography>
+
+        {settlements.length === 0 ? (
+          <Typography color="text.secondary">Пока нет оплат.</Typography>
+        ) : (
+          <Box display="flex" flexDirection="column" gap={1}>
+            {settlements.map((s) => {
+              const from = membersById.get(s.from_user);
+              const to = membersById.get(s.to_user);
+
+              return (
+                <Paper key={s.id} variant="outlined" sx={{ p: 1.5 }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography>
+                        <b>{from?.username ?? `User#${s.from_user}`}</b> →{" "}
+                        <b>{to?.username ?? `User#${s.to_user}`}</b>:{" "}
+                        <b>{s.amount} {s.currency}</b>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Статус: {s.status === "confirmed" ? "подтверждено ✅" : "ожидает подтверждения ⏳"}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Скриншот: {s.proof ? "есть" : "нет"}
+                      </Typography>
+                    </Box>
+
+                    <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                      {s.proof ? (
+                        <>
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => window.open(toAbsUrl(s.proof!), "_blank")}
+                          >
+                            Открыть скриншот
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => downloadReceipt(toAbsUrl(s.proof!), `payment_proof_${s.id}`)}
+                          >
+                            Скачать скриншот
+                          </Button>
+                        </>
+                      ) : null}
+
+                      {canConfirm(s) ? (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<CheckCircleIcon />}
+                          onClick={() => openConfirmDialog(s.id)}
+                        >
+                          Подтвердить
+                        </Button>
+                      ) : null}
+
+                      {/* MVP: разрешил удалять запись инициатору или владельцу поездки */}
+                      {(s.from_user === user?.id || isOwner) ? (
+                        <Button
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          onClick={() => onDeleteSettlement(s.id)}
+                        >
+                          Удалить
+                        </Button>
+                      ) : null}
+                    </Box>
+                  </Box>
                 </Paper>
               );
             })}
@@ -487,7 +703,7 @@ export default function TripDetailPage() {
         </Button>
       </Box>
 
-      {/* Диалог редактирования */}
+      {/* Диалог редактирования расхода */}
       {trip && (
         <ExpenseEditDialog
           open={editOpen}
@@ -511,19 +727,85 @@ export default function TripDetailPage() {
           ) : null}
         </DialogContent>
         <DialogActions>
+          {receiptUrl ? <Button onClick={() => downloadReceipt(receiptUrl!, `receipt.jpg`)}>Скачать</Button> : null}
           {receiptUrl ? (
-            <Button onClick={() => downloadReceipt(receiptUrl!, `receipt.jpg`)}>Скачать</Button>
+            <Button color="error" onClick={onDeleteReceipt} startIcon={<DeleteForeverIcon />}>
+              Удалить
+            </Button>
           ) : null}
-          {receiptUrl ? (
-          <Button
-            color="error"
-            onClick={onDeleteReceipt}
-            startIcon={<DeleteForeverIcon />}
-          >
-            Удалить
-          </Button>
-        ) : null}
           <Button onClick={onCloseReceipt}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог: Я оплатил */}
+      <Dialog open={payOpen} onClose={closePayDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Отметить оплату</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Можно прикрепить скрин перевода (опционально).
+          </Typography>
+
+          <TextField
+            label="Сумма"
+            value={payAmount}
+            onChange={(e) => setPayAmount(e.target.value)}
+            fullWidth
+            margin="normal"
+          />
+
+          <Button variant="outlined" component="label" startIcon={<AttachFileIcon />} sx={{ mt: 1 }}>
+            Прикрепить скриншот
+            <input
+              hidden
+              type="file"
+              onChange={(e) => setPayProofFile(e.target.files?.[0] ?? null)}
+            />
+          </Button>
+
+          {payProofFile ? (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              Файл: {payProofFile.name}
+            </Typography>
+          ) : null}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={closePayDialog}>Отмена</Button>
+          <Button variant="contained" onClick={submitPay} disabled={paySubmitting}>
+            Создать (pending)
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог: Подтвердить оплату */}
+      <Dialog open={confirmOpen} onClose={closeConfirmDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Подтвердить оплату</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Можно прикрепить скрин (опционально). После подтверждения баланс пересчитается.
+          </Typography>
+
+          <Button variant="outlined" component="label" startIcon={<AttachFileIcon />}>
+            Прикрепить скриншот
+            <input
+              hidden
+              type="file"
+              onChange={(e) => setConfirmProofFile(e.target.files?.[0] ?? null)}
+            />
+          </Button>
+
+          {confirmProofFile ? (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              Файл: {confirmProofFile.name}
+            </Typography>
+          ) : null}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={closeConfirmDialog}>Отмена</Button>
+          <Button variant="contained" onClick={submitConfirm} disabled={confirmSubmitting}>
+            Подтвердить
+          </Button>
         </DialogActions>
       </Dialog>
     </Container>
