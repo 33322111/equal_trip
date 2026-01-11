@@ -30,6 +30,7 @@ import { useParams } from "react-router-dom";
 
 import { createInvite, getTrip, TripDetail } from "../api/trips";
 import { useAuth } from "../context/AuthContext";
+import { listCurrencies, Currency } from "../api/currencies";
 
 import {
   listCategories,
@@ -73,6 +74,7 @@ export default function TripDetailPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
 
   // Settlements
   const [settlements, setSettlements] = useState<Settlement[]>([]);
@@ -148,6 +150,12 @@ export default function TripDetailPage() {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
+
+  useEffect(() => {
+  listCurrencies()
+    .then(setCurrencies)
+    .catch(() => setError("Не удалось загрузить список валют"));
+  }, []);
 
   const isOwner = trip?.owner?.id === user?.id;
 
@@ -434,11 +442,27 @@ export default function TripDetailPage() {
               required
             />
             <TextField
+              select
               label="Валюта"
               value={formCurrency}
               onChange={(e) => setFormCurrency(e.target.value)}
-              sx={{ minWidth: 120 }}
-            />
+              sx={{ minWidth: 220 }}
+              SelectProps={{
+                MenuProps: {
+                  PaperProps: {
+                    style: {
+                      maxHeight: 300,
+                    },
+                  },
+                },
+              }}
+            >
+              {currencies.map((c) => (
+                <MenuItem key={c.code} value={c.code}>
+                  {c.code} — {c.name}
+                </MenuItem>
+              ))}
+            </TextField>
             <TextField
               select
               label="Категория"
@@ -496,7 +520,7 @@ export default function TripDetailPage() {
 
                 <Box display="flex" alignItems="center" gap={1}>
                   <Typography fontWeight={700} sx={{ whiteSpace: "nowrap" }}>
-                    {ex.amount} {ex.currency}
+                    {ex.amount} {ex.currency} (≈ {ex.amount_rub} RUB)
                   </Typography>
 
                   {/* Загрузка чека */}
@@ -772,7 +796,7 @@ export default function TripDetailPage() {
         <DialogActions>
           <Button onClick={closePayDialog}>Отмена</Button>
           <Button variant="contained" onClick={submitPay} disabled={paySubmitting}>
-            Создать (pending)
+            Создать
           </Button>
         </DialogActions>
       </Dialog>

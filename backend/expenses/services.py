@@ -16,7 +16,7 @@ def compute_balance(trip_id: int):
 
     expenses = Expense.objects.filter(trip_id=trip_id).prefetch_related("shares")
     for e in expenses:
-        paid[e.created_by_id] += Decimal(e.amount)
+        paid[e.created_by_id] += Decimal(e.amount_rub)
 
         shares = list(e.shares.all())
         if not shares:
@@ -26,7 +26,7 @@ def compute_balance(trip_id: int):
             continue
 
         for s in shares:
-            part = (Decimal(e.amount) * Decimal(s.weight) / total_weight)
+            part = (Decimal(e.amount_rub) * Decimal(s.weight) / total_weight)
             owed[s.user_id] += part
 
     # net: + получает, - должен

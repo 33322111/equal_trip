@@ -13,6 +13,8 @@ export type Expense = {
   category: Category | null;
   receipt?: string | null;
   shares: { id: number; user: { id: number; username: string; email: string }; weight: string }[];
+  amount_rub: string;
+  fx_rate: string;
 };
 
 export type BalanceResponse = {

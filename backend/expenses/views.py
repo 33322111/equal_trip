@@ -11,10 +11,13 @@ from .serializers import (
     CategorySerializer, ExpenseUpdateSerializer
 )
 from django.shortcuts import get_object_or_404
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from .export import export_trip_csv
 from .export_pdf import export_trip_pdf
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .fx import get_all_currencies
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -82,3 +85,15 @@ class TripExportPDFView(APIView):
         trip = get_object_or_404(Trip, id=trip_id)
         self.check_object_permissions(request, trip)
         return export_trip_pdf(trip)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_currencies(request):
+    data = get_all_currencies()
+    return Response(
+        [
+            {"code": code, "name": name}
+            for code, name in sorted(data.items())
+        ]
+    )
