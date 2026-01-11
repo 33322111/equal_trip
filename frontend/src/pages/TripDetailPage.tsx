@@ -25,6 +25,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PaidIcon from "@mui/icons-material/Paid";
+import Autocomplete from "@mui/material/Autocomplete";
 
 import { useParams } from "react-router-dom";
 
@@ -441,28 +442,20 @@ export default function TripDetailPage() {
               fullWidth
               required
             />
-            <TextField
-              select
-              label="Валюта"
-              value={formCurrency}
-              onChange={(e) => setFormCurrency(e.target.value)}
-              sx={{ minWidth: 220 }}
-              SelectProps={{
-                MenuProps: {
-                  PaperProps: {
-                    style: {
-                      maxHeight: 300,
-                    },
-                  },
-                },
+            <Autocomplete
+              options={currencies}
+              sx={{ minWidth: 320 }}
+              autoHighlight
+              value={currencies.find((c) => c.code === formCurrency) ?? null}
+              onChange={(_, newValue) => {
+                setFormCurrency(newValue?.code ?? "RUB");
               }}
-            >
-              {currencies.map((c) => (
-                <MenuItem key={c.code} value={c.code}>
-                  {c.code} — {c.name}
-                </MenuItem>
-              ))}
-            </TextField>
+              getOptionLabel={(option) => `${option.code} — ${option.name}`}
+              isOptionEqualToValue={(option, value) => option.code === value.code}
+              renderInput={(params) => (
+                <TextField {...params} label="Валюта" placeholder="Начни вводить: USD, EUR..." />
+              )}
+            />
             <TextField
               select
               label="Категория"
