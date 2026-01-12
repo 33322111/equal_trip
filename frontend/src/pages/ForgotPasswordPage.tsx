@@ -16,8 +16,7 @@ export default function ForgotPasswordPage() {
       await requestPasswordReset(email.trim());
       setStatus("success");
     } catch (err: any) {
-      setError("Не удалось отправить письмо. Проверь email и попробуй снова.");
-      setStatus("idle");
+      setStatus("success");
     }
   };
 
@@ -29,7 +28,7 @@ export default function ForgotPasswordPage() {
 
       {status === "success" ? (
         <Alert severity="success" sx={{ mb: 2 }}>
-          Если такой email зарегистрирован, письмо со ссылкой отправлено. Проверь консоль backend (в dev-режиме) или почту.
+          Если такой email зарегистрирован, письмо со ссылкой отправлено.
         </Alert>
       ) : null}
 
