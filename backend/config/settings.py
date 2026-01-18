@@ -48,7 +48,8 @@ INSTALLED_APPS = [
     'expenses',
     'django_rest_passwordreset',
     'payments',
-    'notifications'
+    'notifications',
+    'checklists'
 ]
 
 MIDDLEWARE = [
