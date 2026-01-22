@@ -41,7 +41,8 @@ urlpatterns = [
     path("api/profile/", ProfileView.as_view()),
 
     path("api/", include("payments.urls")),
-    path("api/", include("checklists.urls"))
+    path("api/", include("checklists.urls")),
+    path("api/", include("itinerary.urls")),
 ]
 
 

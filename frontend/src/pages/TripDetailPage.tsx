@@ -67,6 +67,7 @@ import TripStatsView from "../components/TripStats";
 import TripMap from "../components/TripMap";
 import { downloadTripCsv, downloadTripPdf, downloadReceipt } from "../api/exports";
 import ExpenseEditDialog from "../components/ExpenseEditDialog";
+import ItinerarySection from "./trip/sections/ItinerarySection";
 
 import {
   listSettlements,
@@ -724,6 +725,12 @@ export default function TripDetailPage() {
           <Button onClick={() => setCommentOpen(false)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
+
+      <ItinerarySection
+        tripId={tripId}
+        members={trip.members}
+        onError={(msg) => setError(msg)}
+      />
 
       {/* РАСХОДЫ */}
       <Paper sx={{ p: 2, mb: 3 }}>

@@ -49,7 +49,8 @@ INSTALLED_APPS = [
     'django_rest_passwordreset',
     'payments',
     'notifications',
-    'checklists'
+    'checklists',
+    'itinerary'
 ]
 
 MIDDLEWARE = [
