@@ -33,8 +33,12 @@ def expense_created_or_updated(sender, instance: Expense, created, **kwargs):
             f"Сумма: {instance.amount} {instance.currency}\n"
         )
 
-    send_notification(subject, message, recipients)
-
+    try:
+        send_notification(subject, message, recipients)
+    except Exception as e:
+        # логируем, но НЕ роняем API
+        import logging
+        logging.exception("Failed to send expense notification email")
 
 @receiver(post_delete, sender=Expense)
 def expense_deleted(sender, instance: Expense, **kwargs):
@@ -54,4 +58,9 @@ def expense_deleted(sender, instance: Expense, **kwargs):
         f"Сумма: {instance.amount} {instance.currency}\n"
     )
 
-    send_notification(subject, message, recipients)
+    try:
+        send_notification(subject, message, recipients)
+    except Exception as e:
+        # логируем, но НЕ роняем API
+        import logging
+        logging.exception("Failed to send expense notification email")

@@ -30,4 +30,9 @@ def settlement_created_or_confirmed(sender, instance: Settlement, created, **kwa
         )
         recipients = [instance.from_user.email]
 
-    send_notification(subject, message, recipients)
+    try:
+        send_notification(subject, message, recipients)
+    except Exception as e:
+        # логируем, но НЕ роняем API
+        import logging
+        logging.exception("Failed to send expense notification email")

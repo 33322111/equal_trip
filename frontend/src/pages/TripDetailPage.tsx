@@ -7,39 +7,26 @@ import {
   Button,
   TextField,
   Alert,
-  MenuItem,
-  Divider,
-  Stack,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
 } from "@mui/material";
 
-import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
-import ImageIcon from "@mui/icons-material/Image";
-import DownloadIcon from "@mui/icons-material/Download";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PaidIcon from "@mui/icons-material/Paid";
-import Autocomplete from "@mui/material/Autocomplete";
 
 import { useParams } from "react-router-dom";
 
 import { createInvite, getTrip, TripDetail } from "../api/trips";
 import { useAuth } from "../context/AuthContext";
-import { listCurrencies, Currency } from "../api/currencies";
 
 import {
   listCategories,
   listExpenses,
-  createExpense,
   getBalance,
-  deleteExpense,
-  uploadExpenseReceipt,
   deleteExpenseReceipt,
   Category,
   Expense,
@@ -53,6 +40,7 @@ import { downloadTripCsv, downloadTripPdf, downloadReceipt } from "../api/export
 import ExpenseEditDialog from "../components/ExpenseEditDialog";
 import ItinerarySection from "./trip/sections/ItinerarySection";
 import ChecklistSection from "./trip/sections/ChecklistSection";
+import ExpensesSection from "./trip/sections/ExpensesSection";
 
 import {
   listSettlements,
@@ -77,19 +65,11 @@ export default function TripDetailPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
-  const [currencies, setCurrencies] = useState<Currency[]>([]);
 
   // Settlements
   const [settlements, setSettlements] = useState<Settlement[]>([]);
 
-  // Create expense form
-  const [formTitle, setFormTitle] = useState("");
-  const [formAmount, setFormAmount] = useState<string>("");
-  const [formCategoryId, setFormCategoryId] = useState<number | "">("");
-  const [formCurrency, setFormCurrency] = useState<string>("RUB");
-
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
@@ -154,12 +134,6 @@ export default function TripDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
-  useEffect(() => {
-  listCurrencies()
-    .then(setCurrencies)
-    .catch(() => setError("Не удалось загрузить список валют"));
-  }, []);
-
   const isOwner = trip?.owner?.id === user?.id;
 
   const onCreateInvite = async () => {
@@ -193,87 +167,9 @@ export default function TripDetailPage() {
     }
   };
 
-  const onAddExpense = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    const amountNum = Number(formAmount);
-    if (!formTitle.trim()) {
-      setError("Введите название расхода.");
-      return;
-    }
-    if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      setError("Введите корректную сумму > 0.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await createExpense(tripId, {
-        title: formTitle.trim(),
-        amount: amountNum,
-        currency: formCurrency,
-        category_id: formCategoryId === "" ? null : formCategoryId,
-        // MVP координаты — можно позже сделать выбор точки на карте
-        lat: 55.751244,
-        lng: 37.618423,
-      });
-
-      await loadAll();
-
-      setFormTitle("");
-      setFormAmount("");
-      setFormCategoryId("");
-      setFormCurrency("RUB");
-    } catch (err) {
-      setError("Не удалось добавить расход. Проверь данные и попробуй снова.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const onDeleteExpense = async (expenseId: number) => {
-    const ok = window.confirm("Удалить расход?");
-    if (!ok) return;
-
-    try {
-      setError(null);
-      await deleteExpense(tripId, expenseId);
-      await loadAll();
-    } catch (e) {
-      setError("Не удалось удалить расход.");
-    }
-  };
-
-  const onOpenEdit = (ex: Expense) => {
-    setSelectedExpense(ex);
-    setEditOpen(true);
-  };
-
   const onCloseEdit = () => {
     setEditOpen(false);
     setSelectedExpense(null);
-  };
-
-  const onUploadReceipt = async (ex: Expense, file: File, inputEl: HTMLInputElement) => {
-    try {
-      setError(null);
-      await uploadExpenseReceipt(tripId, ex.id, file);
-      await loadAll();
-    } catch (e) {
-      setError("Не удалось загрузить чек.");
-    } finally {
-      // чтобы можно было выбрать тот же файл повторно
-      inputEl.value = "";
-    }
-  };
-
-  const onOpenReceipt = (ex: Expense) => {
-    if (!ex.receipt) return;
-    setReceiptTitle(ex.title);
-    setReceiptUrl(toAbsUrl(ex.receipt));
-    setReceiptOpen(true);
-    setReceiptExpenseId(ex.id);
   };
 
   const onCloseReceipt = () => {
@@ -434,153 +330,15 @@ export default function TripDetailPage() {
       />
 
       {/* РАСХОДЫ */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Расходы
-        </Typography>
-
-        {/* Форма добавления */}
-        <Box component="form" onSubmit={onAddExpense} sx={{ mb: 2 }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <TextField
-              label="Название"
-              value={formTitle}
-              onChange={(e) => setFormTitle(e.target.value)}
-              fullWidth
-              required
-            />
-            <TextField
-              label="Сумма"
-              value={formAmount}
-              onChange={(e) => setFormAmount(e.target.value)}
-              fullWidth
-              required
-            />
-            <Autocomplete
-              options={currencies}
-              sx={{ minWidth: 320 }}
-              autoHighlight
-              value={currencies.find((c) => c.code === formCurrency) ?? null}
-              onChange={(_, newValue) => {
-                setFormCurrency(newValue?.code ?? "RUB");
-              }}
-              getOptionLabel={(option) => `${option.code} — ${option.name}`}
-              isOptionEqualToValue={(option, value) => option.code === value.code}
-              renderInput={(params) => (
-                <TextField {...params} label="Валюта" placeholder="Начни вводить: USD, EUR..." />
-              )}
-            />
-            <TextField
-              select
-              label="Категория"
-              value={formCategoryId}
-              onChange={(e) => {
-                const v = e.target.value;
-                setFormCategoryId(v === "" ? "" : Number(v));
-              }}
-              sx={{ minWidth: 220 }}
-            >
-              <MenuItem value="">Без категории</MenuItem>
-              {categories.map((c) => (
-                <MenuItem key={c.id} value={c.id}>
-                  {c.name}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <Button type="submit" variant="contained" disabled={isSubmitting}>
-              Добавить
-            </Button>
-          </Stack>
-        </Box>
-
-        <Divider sx={{ mb: 2 }} />
-
-        {/* Список расходов */}
-        <Box display="flex" flexDirection="column" gap={1}>
-          {expenses.map((ex) => (
-            <Paper key={ex.id} variant="outlined" sx={{ p: 1.5 }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography fontWeight={600} noWrap>
-                    {ex.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" noWrap>
-                    {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
-                  </Typography>
-
-                  {/* На кого делится */}
-                  {ex.shares?.length ? (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Делится на:{" "}
-                      {ex.shares
-                        .map((s) => membersById.get(s.user.id)?.username ?? s.user.username)
-                        .join(", ")}
-                    </Typography>
-                  ) : null}
-
-                  {/* Статус чека */}
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Чек: {ex.receipt ? "прикреплён" : "нет"}
-                  </Typography>
-                </Box>
-
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Typography fontWeight={700} sx={{ whiteSpace: "nowrap" }}>
-                    {ex.amount} {ex.currency} (≈ {ex.amount_rub} RUB)
-                  </Typography>
-
-                  {/* Загрузка чека */}
-                  <IconButton size="small" component="label" aria-label="upload-receipt">
-                    <AttachFileIcon fontSize="small" />
-                    <input
-                      type="file"
-                      hidden
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        onUploadReceipt(ex, file, e.currentTarget);
-                      }}
-                    />
-                  </IconButton>
-
-                  {/* Просмотр/скачивание чека */}
-                  {ex.receipt ? (
-                    <>
-                      <IconButton size="small" onClick={() => onOpenReceipt(ex)} aria-label="view-receipt">
-                        <ImageIcon fontSize="small" />
-                      </IconButton>
-
-                      <IconButton
-                        size="small"
-                        onClick={() => downloadReceipt(ex.receipt!, `receipt_${ex.id}.jpg`)}
-                        aria-label="download-receipt"
-                      >
-                        <DownloadIcon fontSize="small" />
-                      </IconButton>
-                    </>
-                  ) : null}
-
-                  {/* Редактирование */}
-                  <IconButton size="small" onClick={() => onOpenEdit(ex)} aria-label="edit-expense">
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-
-                  {/* Удаление */}
-                  <IconButton size="small" onClick={() => onDeleteExpense(ex.id)} aria-label="delete-expense">
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-              </Box>
-            </Paper>
-          ))}
-
-          {expenses.length === 0 && (
-            <Typography color="text.secondary">Пока нет расходов. Добавь первый 🙂</Typography>
-          )}
-        </Box>
-      </Paper>
+      <ExpensesSection
+        tripId={tripId}
+        trip={trip}
+        onError={(msg) => setError(msg)}
+        onAfterChange={async () => {
+          // после изменения расходов нужно пересчитать: balance / stats / settlements
+          await loadAll();
+        }}
+      />
 
       {/* Карта */}
       <Box mt={3}>
