@@ -9,11 +9,6 @@ import {
   Box,
   IconButton,
   MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
@@ -21,7 +16,6 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import ImageIcon from "@mui/icons-material/Image";
 import DownloadIcon from "@mui/icons-material/Download";
-import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
 import Autocomplete from "@mui/material/Autocomplete";
 
@@ -40,6 +34,7 @@ import { listCurrencies, Currency } from "../../../api/currencies";
 import { downloadReceipt } from "../../../api/exports";
 import ExpenseEditDialog from "../../../components/ExpenseEditDialog";
 import { TripDetail } from "../../../api/trips";
+import ReceiptDialog from "../../../components/ReceiptDialog";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -49,6 +44,20 @@ type Props = {
   onAfterChange?: () => Promise<void> | void; // чтобы родитель мог reload balance/stats/etc.
   onError: (msg: string) => void;
 };
+
+function toAbsUrl(url: string) {
+  return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+}
+
+function guessFilename(url: string, fallback: string) {
+  try {
+    const clean = url.split("?")[0];
+    const last = clean.substring(clean.lastIndexOf("/") + 1);
+    return last || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export default function ExpensesSection({ tripId, trip, onAfterChange, onError }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -72,15 +81,13 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const [receiptTitle, setReceiptTitle] = useState<string>("");
   const [receiptExpenseId, setReceiptExpenseId] = useState<number | null>(null);
 
-  const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
-
   const membersById = useMemo(() => {
     const map = new Map<number, { username: string; email: string }>();
     for (const m of trip.members) {
       map.set(m.user.id, { username: m.user.username, email: m.user.email });
     }
     return map;
-  }, [trip]);
+  }, [trip.members]);
 
   const loadLocal = async () => {
     try {
@@ -99,7 +106,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   }, [tripId]);
 
   useEffect(() => {
-    listCurrencies().then(setCurrencies).catch(() => onError("Не удалось загрузить список валют"));
+    listCurrencies()
+      .then(setCurrencies)
+      .catch(() => onError("Не удалось загрузить список валют"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -171,6 +180,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     } catch {
       onError("Не удалось загрузить чек.");
     } finally {
+      // чтобы можно было выбрать тот же файл повторно
       inputEl.value = "";
     }
   };
@@ -178,9 +188,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const onOpenReceipt = (ex: Expense) => {
     if (!ex.receipt) return;
     setReceiptTitle(ex.title);
-    setReceiptUrl(toAbsUrl(ex.receipt));
-    setReceiptOpen(true);
+    setReceiptUrl(toAbsUrl(ex.receipt)); // делаем абсолютный URL
     setReceiptExpenseId(ex.id);
+    setReceiptOpen(true);
   };
 
   const onCloseReceipt = () => {
@@ -202,6 +212,11 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     } catch {
       onError("Не удалось удалить чек.");
     }
+  };
+
+  const onDownloadReceiptFromDialog = () => {
+    if (!receiptUrl) return;
+    downloadReceipt(receiptUrl, guessFilename(receiptUrl, "receipt.jpg"));
   };
 
   return (
@@ -271,82 +286,86 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
 
         {/* Список расходов */}
         <Box display="flex" flexDirection="column" gap={1}>
-          {expenses.map((ex) => (
-            <Paper key={ex.id} variant="outlined" sx={{ p: 1.5 }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography fontWeight={600} noWrap>
-                    {ex.title}
-                  </Typography>
+          {expenses.map((ex) => {
+            const receiptAbs = ex.receipt ? toAbsUrl(ex.receipt) : null;
 
-                  <Typography variant="body2" color="text.secondary" noWrap>
-                    {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
-                  </Typography>
-
-                  {ex.shares?.length ? (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Делится на:{" "}
-                      {ex.shares
-                        .map((s) => membersById.get(s.user.id)?.username ?? s.user.username)
-                        .join(", ")}
+            return (
+              <Paper key={ex.id} variant="outlined" sx={{ p: 1.5 }}>
+                <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography fontWeight={600} noWrap>
+                      {ex.title}
                     </Typography>
-                  ) : null}
 
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Чек: {ex.receipt ? "прикреплён" : "нет"}
-                  </Typography>
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
+                    </Typography>
+
+                    {ex.shares?.length ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        Делится на:{" "}
+                        {ex.shares
+                          .map((s) => membersById.get(s.user.id)?.username ?? s.user.username)
+                          .join(", ")}
+                      </Typography>
+                    ) : null}
+
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      Чек: {ex.receipt ? "прикреплён" : "нет"}
+                    </Typography>
+                  </Box>
+
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Typography fontWeight={700} sx={{ whiteSpace: "nowrap" }}>
+                      {ex.amount} {ex.currency}
+                      {ex.amount_rub ? ` (≈ ${ex.amount_rub} RUB)` : ""}
+                    </Typography>
+
+                    {/* Upload receipt */}
+                    <IconButton size="small" component="label" aria-label="upload-receipt">
+                      <AttachFileIcon fontSize="small" />
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          onUploadReceipt(ex, file, e.currentTarget);
+                        }}
+                      />
+                    </IconButton>
+
+                    {/* View/download receipt */}
+                    {receiptAbs ? (
+                      <>
+                        <IconButton size="small" onClick={() => onOpenReceipt(ex)} aria-label="view-receipt">
+                          <ImageIcon fontSize="small" />
+                        </IconButton>
+
+                        <IconButton
+                          size="small"
+                          onClick={() => downloadReceipt(receiptAbs, guessFilename(receiptAbs, `receipt_${ex.id}.jpg`))}
+                          aria-label="download-receipt"
+                        >
+                          <DownloadIcon fontSize="small" />
+                        </IconButton>
+                      </>
+                    ) : null}
+
+                    {/* Edit / Delete */}
+                    <IconButton size="small" onClick={() => onOpenEdit(ex)} aria-label="edit-expense">
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+
+                    <IconButton size="small" onClick={() => onDeleteExpense(ex.id)} aria-label="delete-expense">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
                 </Box>
-
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Typography fontWeight={700} sx={{ whiteSpace: "nowrap" }}>
-                    {ex.amount} {ex.currency}
-                    {ex.amount_rub ? ` (≈ ${ex.amount_rub} RUB)` : ""}
-                  </Typography>
-
-                  {/* Upload receipt */}
-                  <IconButton size="small" component="label" aria-label="upload-receipt">
-                    <AttachFileIcon fontSize="small" />
-                    <input
-                      type="file"
-                      hidden
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        onUploadReceipt(ex, file, e.currentTarget);
-                      }}
-                    />
-                  </IconButton>
-
-                  {/* View/download receipt */}
-                  {ex.receipt ? (
-                    <>
-                      <IconButton size="small" onClick={() => onOpenReceipt(ex)} aria-label="view-receipt">
-                        <ImageIcon fontSize="small" />
-                      </IconButton>
-
-                      <IconButton
-                        size="small"
-                        onClick={() => downloadReceipt(ex.receipt!, `receipt_${ex.id}.jpg`)}
-                        aria-label="download-receipt"
-                      >
-                        <DownloadIcon fontSize="small" />
-                      </IconButton>
-                    </>
-                  ) : null}
-
-                  {/* Edit / Delete */}
-                  <IconButton size="small" onClick={() => onOpenEdit(ex)} aria-label="edit-expense">
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-
-                  <IconButton size="small" onClick={() => onDeleteExpense(ex.id)} aria-label="delete-expense">
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-              </Box>
-            </Paper>
-          ))}
+              </Paper>
+            );
+          })}
 
           {expenses.length === 0 ? (
             <Typography color="text.secondary">Пока нет расходов. Добавь первый 🙂</Typography>
@@ -369,29 +388,14 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
       />
 
       {/* Receipt dialog */}
-      <Dialog open={receiptOpen} onClose={onCloseReceipt} maxWidth="md" fullWidth>
-        <DialogTitle>Чек: {receiptTitle}</DialogTitle>
-        <DialogContent dividers>
-          {receiptUrl ? (
-            <Box display="flex" justifyContent="center">
-              <img src={receiptUrl} alt="receipt" style={{ maxWidth: "100%", height: "auto" }} />
-            </Box>
-          ) : (
-            <Alert severity="info">Чек не найден.</Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          {receiptUrl ? <Button onClick={() => downloadReceipt(receiptUrl, `receipt.jpg`)}>Скачать</Button> : null}
-
-          {receiptUrl ? (
-            <Button color="error" onClick={onDeleteReceipt} startIcon={<DeleteForeverIcon />}>
-              Удалить
-            </Button>
-          ) : null}
-
-          <Button onClick={onCloseReceipt}>Закрыть</Button>
-        </DialogActions>
-      </Dialog>
+      <ReceiptDialog
+        open={receiptOpen}
+        title={receiptTitle}
+        url={receiptUrl}
+        onClose={onCloseReceipt}
+        onDownload={onDownloadReceiptFromDialog}
+        onDelete={receiptUrl ? onDeleteReceipt : undefined}
+      />
     </>
   );
 }

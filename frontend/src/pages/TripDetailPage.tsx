@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Container,
   Typography,
@@ -6,13 +6,7 @@ import {
   Box,
   Button,
   Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
 } from "@mui/material";
-
-import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
 import { useParams } from "react-router-dom";
 
@@ -33,16 +27,18 @@ import { getTripStats, TripStats } from "../api/stats";
 import TripStatsView from "../components/TripStats";
 import TripMap from "../components/TripMap";
 import { downloadTripCsv, downloadTripPdf, downloadReceipt } from "../api/exports";
-import ExpenseEditDialog from "../components/ExpenseEditDialog";
+
 import ItinerarySection from "./trip/sections/ItinerarySection";
 import ChecklistSection from "./trip/sections/ChecklistSection";
 import ExpensesSection from "./trip/sections/ExpensesSection";
 import BalanceSettlementsSection from "./trip/sections/BalanceSettlementsSection";
 
-import {
-  listSettlements,
-  Settlement,
-} from "../api/settlements";
+import { listSettlements, Settlement } from "../api/settlements";
+
+import ReceiptDialog from "../components/ReceiptDialog";
+
+const API_BASE_URL = "http://localhost:8000";
+const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
 
 export default function TripDetailPage() {
   const { id } = useParams();
@@ -58,20 +54,24 @@ export default function TripDetailPage() {
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
 
-  // Settlements
   const [settlements, setSettlements] = useState<Settlement[]>([]);
-
   const [error, setError] = useState<string | null>(null);
 
-  // Edit dialog
-  const [editOpen, setEditOpen] = useState(false);
-  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
-
-  // Receipt dialog
+  // Receipt dialog state
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [receiptTitle, setReceiptTitle] = useState<string>("");
   const [receiptExpenseId, setReceiptExpenseId] = useState<number | null>(null);
+
+  const membersById = useMemo(() => {
+    const map = new Map<number, { username: string; email: string }>();
+    if (trip?.members) {
+      for (const m of trip.members) {
+        map.set(m.user.id, { username: m.user.username, email: m.user.email });
+      }
+    }
+    return map;
+  }, [trip]);
 
   const loadAll = async () => {
     setError(null);
@@ -115,6 +115,22 @@ export default function TripDetailPage() {
     }
   };
 
+  // открытие диалога чека
+  const onOpenReceipt = (ex: Expense) => {
+    if (!ex.receipt) return;
+    setReceiptTitle(ex.title);
+    setReceiptUrl(toAbsUrl(ex.receipt));
+    setReceiptExpenseId(ex.id);
+    setReceiptOpen(true);
+  };
+
+  const onCloseReceipt = () => {
+    setReceiptOpen(false);
+    setReceiptTitle("");
+    setReceiptUrl(null);
+    setReceiptExpenseId(null);
+  };
+
   const onDeleteReceipt = async () => {
     if (!receiptExpenseId) return;
 
@@ -124,26 +140,16 @@ export default function TripDetailPage() {
     try {
       setError(null);
       await deleteExpenseReceipt(tripId, receiptExpenseId);
-      setReceiptOpen(false);
-      setReceiptUrl(null);
-      setReceiptTitle("");
-      setReceiptExpenseId(null);
+      onCloseReceipt();
       await loadAll();
     } catch (e) {
       setError("Не удалось удалить чек.");
     }
   };
 
-  const onCloseEdit = () => {
-    setEditOpen(false);
-    setSelectedExpense(null);
-  };
-
-  const onCloseReceipt = () => {
-    setReceiptOpen(false);
-    setReceiptTitle("");
-    setReceiptUrl(null);
-    setReceiptExpenseId(null);
+  const onDownloadCurrentReceipt = () => {
+    if (!receiptUrl) return;
+    downloadReceipt(receiptUrl, `receipt_${receiptExpenseId ?? "file"}.jpg`);
   };
 
   if (!trip) return <div>Загрузка...</div>;
@@ -190,27 +196,17 @@ export default function TripDetailPage() {
         </Paper>
       )}
 
-      <ChecklistSection
-        tripId={tripId}
-        members={trip.members}
-        onError={(msg) => setError(msg)}
-      />
+      <ChecklistSection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
 
-      <ItinerarySection
-        tripId={tripId}
-        members={trip.members}
-        onError={(msg) => setError(msg)}
-      />
+      <ItinerarySection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
 
       {/* РАСХОДЫ */}
       <ExpensesSection
         tripId={tripId}
         trip={trip}
         onError={(msg) => setError(msg)}
-        onAfterChange={async () => {
-          // после изменения расходов нужно пересчитать: balance / stats / settlements
-          await loadAll();
-        }}
+        onAfterChange={loadAll}
+        onOpenReceipt={onOpenReceipt}
       />
 
       {/* Карта */}
@@ -252,39 +248,17 @@ export default function TripDetailPage() {
         </Button>
       </Box>
 
-      {/* Диалог редактирования расхода */}
-      {trip && (
-        <ExpenseEditDialog
-          open={editOpen}
-          onClose={onCloseEdit}
-          tripId={tripId}
-          trip={trip}
-          categories={categories}
-          expense={selectedExpense}
-          onSaved={loadAll}
-        />
-      )}
-
       {/* Диалог просмотра чека */}
-      <Dialog open={receiptOpen} onClose={onCloseReceipt} maxWidth="md" fullWidth>
-        <DialogTitle>Чек: {receiptTitle}</DialogTitle>
-        <DialogContent dividers>
-          {receiptUrl ? (
-            <Box display="flex" justifyContent="center">
-              <img src={receiptUrl} alt="receipt" style={{ maxWidth: "100%", height: "auto" }} />
-            </Box>
-          ) : null}
-        </DialogContent>
-        <DialogActions>
-          {receiptUrl ? <Button onClick={() => downloadReceipt(receiptUrl!, `receipt.jpg`)}>Скачать</Button> : null}
-          {receiptUrl ? (
-            <Button color="error" onClick={onDeleteReceipt} startIcon={<DeleteForeverIcon />}>
-              Удалить
-            </Button>
-          ) : null}
-          <Button onClick={onCloseReceipt}>Закрыть</Button>
-        </DialogActions>
-      </Dialog>
+      <ReceiptDialog
+        open={receiptOpen}
+        title={receiptTitle}
+        url={receiptUrl}
+        onClose={onCloseReceipt}
+        onDownload={onDownloadCurrentReceipt}
+        onDelete={onDeleteReceipt}
+        canDownload={!!receiptUrl}
+        canDelete={!!receiptUrl}
+      />
     </Container>
   );
 }
