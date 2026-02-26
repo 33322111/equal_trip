@@ -43,8 +43,6 @@ import { TripDetail } from "../../../api/trips";
 
 const API_BASE_URL = "http://localhost:8000";
 
-type MemberUser = { id: number; username: string; email: string };
-
 type Props = {
   tripId: number;
   trip: TripDetail;
