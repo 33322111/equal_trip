@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Container,
   Typography,
@@ -10,30 +10,71 @@ import {
 } from "@mui/material";
 import { getProfile, updateProfile, Profile } from "../api/profile";
 
+const API_BASE_URL = "http://localhost:8000";
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
+
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [status, setStatus] = useState<"idle" | "saving" | "success">("idle");
   const [error, setError] = useState<string | null>(null);
-  const API_BASE_URL = "http://localhost:8000";
 
-  const avatarUrl =
-    profile?.avatar
-      ? (profile.avatar.startsWith("http") ? profile.avatar : `${API_BASE_URL}${profile.avatar}`)
-      : undefined;
+  const savedAvatarUrl = useMemo(() => {
+    if (!profile?.avatar) return undefined;
+    return profile.avatar.startsWith("http")
+      ? profile.avatar
+      : `${API_BASE_URL}${profile.avatar}`;
+  }, [profile?.avatar]);
+
+  const avatarSrc = avatarPreviewUrl ?? savedAvatarUrl;
 
   useEffect(() => {
-    getProfile().then((p) => {
-      setProfile(p);
-      setUsername(p.username);
-      setEmail(p.email);
-    });
+    getProfile()
+      .then((p) => {
+        setProfile(p);
+        setUsername(p.username);
+        setEmail(p.email);
+      })
+      .catch(() => setError("Не удалось загрузить профиль."));
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreviewUrl) URL.revokeObjectURL(avatarPreviewUrl);
+    };
+  }, [avatarPreviewUrl]);
+
+  const onPickAvatar = (file: File | null) => {
+    setStatus("idle");
+    setError(null);
+
+    if (avatarPreviewUrl) URL.revokeObjectURL(avatarPreviewUrl);
+
+    if (!file) {
+      setAvatarFile(null);
+      setAvatarPreviewUrl(null);
+      return;
+    }
+
+    setAvatarFile(file);
+    setAvatarPreviewUrl(URL.createObjectURL(file));
+
+    // чтобы можно было выбрать тот же файл повторно
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!profile) return;
+
     setError(null);
     setStatus("saving");
 
@@ -45,6 +86,12 @@ export default function ProfilePage() {
 
       const updated = await updateProfile(form);
       setProfile(updated);
+
+      // сохранено -> сбрасываем локальное превью
+      if (avatarPreviewUrl) URL.revokeObjectURL(avatarPreviewUrl);
+      setAvatarPreviewUrl(null);
+      setAvatarFile(null);
+
       setStatus("success");
     } catch (err) {
       setError("Не удалось сохранить профиль.");
@@ -73,21 +120,30 @@ export default function ProfilePage() {
 
       <Box component="form" onSubmit={onSubmit}>
         <Box display="flex" alignItems="center" gap={2} mb={3}>
-          <Avatar
-            src={avatarUrl}
-            sx={{ width: 80, height: 80 }}
-          />
-          <Button variant="outlined" component="label">
-            Загрузить аватар
-            <input
-              type="file"
-              hidden
-              accept="image/*"
-              onChange={(e) =>
-                setAvatarFile(e.target.files?.[0] || null)
-              }
-            />
-          </Button>
+          <Avatar src={avatarSrc} sx={{ width: 80, height: 80 }} />
+
+          <Box display="flex" flexDirection="column" gap={1}>
+            <Button variant="outlined" component="label">
+    Загрузить аватар
+    <input
+      ref={fileInputRef}
+      type="file"
+      hidden
+      accept="image/*"
+      onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
+    />
+  </Button>
+
+            {avatarFile ? (
+    <Button
+      variant="outlined"
+      color="error"
+      onClick={() => onPickAvatar(null)}
+    >
+      Сбросить выбор
+    </Button>
+  ) : null}
+          </Box>
         </Box>
 
         <TextField
