@@ -26,6 +26,15 @@ class TripSerializer(serializers.ModelSerializer):
         model = Trip
         fields = ("id", "title", "description", "start_date", "end_date", "owner", "created_at")
 
+    def validate(self, attrs):
+        start = attrs.get("start_date", getattr(self.instance, "start_date", None))
+        end = attrs.get("end_date", getattr(self.instance, "end_date", None))
+
+        if start and end and end < start:
+            raise serializers.ValidationError({"end_date": "Дата окончания не может быть раньше даты начала."})
+
+        return attrs
+
 
 class TripDetailSerializer(serializers.ModelSerializer):
     owner = UserShortSerializer(read_only=True)
@@ -47,11 +56,26 @@ class TripCreateSerializer(serializers.ModelSerializer):
         model = Trip
         fields = ("id", "title", "description", "start_date", "end_date")
 
+    def validate(self, attrs):
+        start = attrs.get("start_date")
+        end = attrs.get("end_date")
+
+        if not start:
+            raise serializers.ValidationError({"start_date": "Укажите дату начала поездки."})
+        if not end:
+            raise serializers.ValidationError({"end_date": "Укажите дату окончания поездки."})
+
+        if end < start:
+            raise serializers.ValidationError({"end_date": "Дата окончания не может быть раньше даты начала."})
+
+        return attrs
+
     def create(self, validated_data):
         request = self.context["request"]
         trip = Trip.objects.create(owner=request.user, **validated_data)
         TripMember.objects.create(trip=trip, user=request.user, role=TripMember.Role.OWNER)
         return trip
+
 
 class TripInviteSerializer(serializers.ModelSerializer):
     class Meta:

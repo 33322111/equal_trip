@@ -50,3 +50,11 @@ export async function acceptInvite(token: string): Promise<{ trip_id: number }> 
   const res = await api.post(`/invites/accept/${token}/`);
   return res.data;
 }
+
+export async function updateTrip(
+  id: number,
+  payload: Partial<Pick<Trip, "title" | "description" | "start_date" | "end_date">>
+): Promise<Trip> {
+  const res = await api.patch(`/trips/${id}/`, payload);
+  return res.data;
+}

@@ -6,11 +6,20 @@ import {
   Box,
   Button,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  Stack,
 } from "@mui/material";
+
+import EditIcon from "@mui/icons-material/Edit";
 
 import { useParams } from "react-router-dom";
 
-import { createInvite, getTrip, TripDetail } from "../api/trips";
+import { createInvite, getTrip, TripDetail, updateTrip } from "../api/trips";
 import { useAuth } from "../context/AuthContext";
 
 import {
@@ -63,6 +72,56 @@ export default function TripDetailPage() {
   const [receiptTitle, setReceiptTitle] = useState<string>("");
   const [receiptExpenseId, setReceiptExpenseId] = useState<number | null>(null);
 
+  // Edit dates dialog
+  const [editDatesOpen, setEditDatesOpen] = useState(false);
+  const [editStartDate, setEditStartDate] = useState<string | null>(null);
+  const [editEndDate, setEditEndDate] = useState<string | null>(null);
+  const [savingDates, setSavingDates] = useState(false);
+
+  // Edit title dialog
+  const [editTitleOpen, setEditTitleOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
+
+  const isOwner = trip?.owner?.id === user?.id;
+
+  const formatTripDates = (start: string | null, end: string | null) => {
+    if (!start && !end) return null;
+
+    const months = [
+      "января",
+      "февраля",
+      "марта",
+      "апреля",
+      "мая",
+      "июня",
+      "июля",
+      "августа",
+      "сентября",
+      "октября",
+      "ноября",
+      "декабря",
+    ];
+
+    const format = (dateStr: string) => {
+      const d = new Date(dateStr);
+      return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    };
+
+    if (start && end) {
+      const s = new Date(start);
+      const e = new Date(end);
+
+      if (s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth()) {
+        return `${s.getDate()}–${e.getDate()} ${months[s.getMonth()]} ${s.getFullYear()}`;
+      }
+
+      return `${format(start)} – ${format(end)}`;
+    }
+
+    return start ? format(start) : format(end!);
+  };
+
   const membersById = useMemo(() => {
     const map = new Map<number, { username: string; email: string }>();
     if (trip?.members) {
@@ -101,8 +160,6 @@ export default function TripDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
-  const isOwner = trip?.owner?.id === user?.id;
-
   const onCreateInvite = async () => {
     try {
       setError(null);
@@ -115,7 +172,7 @@ export default function TripDetailPage() {
     }
   };
 
-  // открытие диалога чека
+  // Receipt
   const onOpenReceipt = (ex: Expense) => {
     if (!ex.receipt) return;
     setReceiptTitle(ex.title);
@@ -152,13 +209,113 @@ export default function TripDetailPage() {
     downloadReceipt(receiptUrl, `receipt_${receiptExpenseId ?? "file"}.jpg`);
   };
 
+  // Edit dates
+  const openEditDates = () => {
+    if (!trip) return;
+    setEditStartDate(trip.start_date);
+    setEditEndDate(trip.end_date);
+    setEditDatesOpen(true);
+  };
+
+  const saveDates = async () => {
+    if (!trip) return;
+
+    if (editStartDate && editEndDate && editEndDate < editStartDate) {
+      setError("Дата окончания не может быть раньше даты начала.");
+      return;
+    }
+
+    setSavingDates(true);
+    try {
+      const updated = await updateTrip(tripId, {
+        start_date: editStartDate,
+        end_date: editEndDate,
+      });
+
+      setTrip((prev) =>
+        prev
+          ? {
+              ...prev,
+              start_date: updated.start_date,
+              end_date: updated.end_date,
+            }
+          : prev
+      );
+
+      setEditDatesOpen(false);
+    } catch {
+      setError("Не удалось обновить даты поездки.");
+    } finally {
+      setSavingDates(false);
+    }
+  };
+
+  // Edit title
+  const openEditTitle = () => {
+    if (!trip) return;
+    setEditTitle(trip.title);
+    setEditTitleOpen(true);
+  };
+
+  const saveTitle = async () => {
+    const nextTitle = editTitle.trim();
+    if (!nextTitle) {
+      setError("Название поездки не может быть пустым.");
+      return;
+    }
+
+    setSavingTitle(true);
+    try {
+      const updated = await updateTrip(tripId, { title: nextTitle });
+
+      setTrip((prev) =>
+        prev
+          ? {
+              ...prev,
+              title: updated.title,
+            }
+          : prev
+      );
+
+      setEditTitleOpen(false);
+    } catch {
+      setError("Не удалось обновить название поездки.");
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+
   if (!trip) return <div>Загрузка...</div>;
 
   return (
     <Container sx={{ mt: 4, mb: 6 }}>
-      <Typography variant="h4" gutterBottom>
-        {trip.title}
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2} gap={2}>
+        <Box sx={{ minWidth: 0 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+            <Typography variant="h4" sx={{ wordBreak: "break-word" }}>
+              {trip.title}
+            </Typography>
+
+            {isOwner ? (
+              <IconButton size="small" onClick={openEditTitle} aria-label="edit-title">
+                <EditIcon fontSize="small" />
+              </IconButton>
+            ) : null}
+          </Stack>
+
+          {formatTripDates(trip.start_date, trip.end_date) ? (
+            <Typography variant="subtitle1" color="text.secondary">
+              {formatTripDates(trip.start_date, trip.end_date)}
+            </Typography>
+          ) : null}
+        </Box>
+
+        {isOwner ? (
+          <Button variant="outlined" size="small" onClick={openEditDates}>
+            Редактировать даты
+          </Button>
+        ) : null}
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -197,10 +354,8 @@ export default function TripDetailPage() {
       )}
 
       <ChecklistSection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
-
       <ItinerarySection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
 
-      {/* РАСХОДЫ */}
       <ExpensesSection
         tripId={tripId}
         trip={trip}
@@ -209,12 +364,10 @@ export default function TripDetailPage() {
         onOpenReceipt={onOpenReceipt}
       />
 
-      {/* Карта */}
       <Box mt={3}>
         <TripMap expenses={expenses} />
       </Box>
 
-      {/* Баланс + оплаты */}
       <BalanceSettlementsSection
         tripId={tripId}
         userId={user?.id}
@@ -226,14 +379,12 @@ export default function TripDetailPage() {
         onError={(msg) => setError(msg)}
       />
 
-      {/* Статистика */}
       {stats && (
         <Box mt={3}>
           <TripStatsView stats={stats} />
         </Box>
       )}
 
-      {/* Экспорт + обновление */}
       <Box mt={3} display="flex" gap={2} flexWrap="wrap">
         <Button variant="text" onClick={loadAll}>
           Обновить данные
@@ -247,6 +398,62 @@ export default function TripDetailPage() {
           Экспорт PDF
         </Button>
       </Box>
+
+      {/* Диалог редактирования названия */}
+      <Dialog open={editTitleOpen} onClose={() => setEditTitleOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Изменить название поездки</DialogTitle>
+
+        <DialogContent dividers>
+          <TextField
+            label="Название"
+            fullWidth
+            autoFocus
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+          />
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setEditTitleOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={saveTitle} disabled={savingTitle}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог редактирования дат */}
+      <Dialog open={editDatesOpen} onClose={() => setEditDatesOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Редактировать даты поездки</DialogTitle>
+
+        <DialogContent dividers>
+          <TextField
+            label="Дата начала"
+            type="date"
+            fullWidth
+            margin="normal"
+            InputLabelProps={{ shrink: true }}
+            value={editStartDate ?? ""}
+            onChange={(e) => setEditStartDate(e.target.value || null)}
+          />
+
+          <TextField
+            label="Дата окончания"
+            type="date"
+            fullWidth
+            margin="normal"
+            InputLabelProps={{ shrink: true }}
+            value={editEndDate ?? ""}
+            onChange={(e) => setEditEndDate(e.target.value || null)}
+          />
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setEditDatesOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={saveDates} disabled={savingDates}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Диалог просмотра чека */}
       <ReceiptDialog
