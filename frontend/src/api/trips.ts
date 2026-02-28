@@ -58,3 +58,12 @@ export async function updateTrip(
   const res = await api.patch(`/trips/${id}/`, payload);
   return res.data;
 }
+
+export async function removeTripMember(tripId: number, memberId: number): Promise<void> {
+  await api.delete(`/trips/${tripId}/members/${memberId}/`);
+}
+
+export async function leaveTrip(tripId: number): Promise<{ detail: string }> {
+  const res = await api.post(`/trips/${tripId}/leave/`);
+  return res.data;
+}

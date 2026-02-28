@@ -17,9 +17,9 @@ import {
 
 import EditIcon from "@mui/icons-material/Edit";
 
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 
-import { createInvite, getTrip, TripDetail, updateTrip } from "../api/trips";
+import { createInvite, getTrip, TripDetail, updateTrip, removeTripMember, leaveTrip } from "../api/trips";
 import { useAuth } from "../context/AuthContext";
 
 import {
@@ -84,6 +84,19 @@ export default function TripDetailPage() {
   const [savingTitle, setSavingTitle] = useState(false);
 
   const isOwner = trip?.owner?.id === user?.id;
+  const navigate = useNavigate();
+
+  const onLeaveTrip = async () => {
+  if (!window.confirm("Покинуть поездку?")) return;
+
+  try {
+    setError(null);
+    await leaveTrip(tripId);
+    navigate("/trips");
+  } catch (e) {
+    setError("Не удалось покинуть поездку.");
+  }
+};
 
   const formatTripDates = (start: string | null, end: string | null) => {
     if (!start && !end) return null;
@@ -121,6 +134,19 @@ export default function TripDetailPage() {
 
     return start ? format(start) : format(end!);
   };
+
+  const onRemoveMember = async (memberId: number, label: string) => {
+  if (!window.confirm(`Удалить участника ${label} из поездки?`)) return;
+
+  try {
+    setError(null);
+    await removeTripMember(tripId, memberId);
+    await loadAll(); // обновим список участников
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || "Не удалось удалить участника.";
+    setError(String(msg));
+  }
+};
 
   const membersById = useMemo(() => {
     const map = new Map<number, { username: string; email: string }>();
@@ -314,8 +340,14 @@ export default function TripDetailPage() {
           <Button variant="outlined" size="small" onClick={openEditDates}>
             Редактировать даты
           </Button>
-        ) : null}
+        ) : (
+    <Button variant="outlined" color="error" size="small" onClick={onLeaveTrip}>
+      Покинуть поездку
+    </Button>
+  )}
       </Box>
+
+
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -325,16 +357,36 @@ export default function TripDetailPage() {
 
       {/* УЧАСТНИКИ */}
       <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6">Участники</Typography>
-        {trip.members.map((m) => (
-          <Box key={m.id} display="flex" justifyContent="space-between" py={0.5}>
-            <Typography>
-              {m.user.username} ({m.user.email})
-            </Typography>
-            <Typography color="text.secondary">{m.role}</Typography>
-          </Box>
-        ))}
-      </Paper>
+  <Typography variant="h6">Участники</Typography>
+
+  {trip.members.map((m) => {
+    const canRemove = isOwner && m.role === "MEMBER" && m.user.id !== user?.id;
+
+    return (
+      <Box key={m.id} display="flex" justifyContent="space-between" alignItems="center" py={0.5} gap={2}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography noWrap>
+            {m.user.username} ({m.user.email})
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {m.role === "OWNER" ? "ВЛАДЕЛЕЦ" : "УЧАСТНИК"}
+          </Typography>
+        </Box>
+
+        {canRemove ? (
+          <Button
+            color="error"
+            variant="outlined"
+            size="small"
+            onClick={() => onRemoveMember(m.id, m.user.username)}
+          >
+            Удалить
+          </Button>
+        ) : null}
+      </Box>
+    );
+  })}
+</Paper>
 
       {/* INVITE */}
       {isOwner && (

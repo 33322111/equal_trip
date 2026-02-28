@@ -1,3 +1,4 @@
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
@@ -34,7 +35,7 @@ class TripViewSet(viewsets.ModelViewSet):
         instance.delete()
 
     def get_permissions(self):
-        if self.action in ("retrieve", "update", "partial_update"):
+        if self.action in ("retrieve", "update", "partial_update", "leave"):
             return [permissions.IsAuthenticated(), IsTripMember()]
         return super().get_permissions()
 
@@ -47,6 +48,48 @@ class TripViewSet(viewsets.ModelViewSet):
 
         invite = TripInvite.objects.create(trip=trip, created_by=request.user)
         return Response(TripInviteSerializer(invite).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path=r"members/(?P<member_id>\d+)")
+    def remove_member(self, request, pk=None, member_id=None):
+        trip = self.get_object()
+
+        # только owner
+        is_owner = TripMember.objects.filter(
+            trip=trip, user=request.user, role=TripMember.Role.OWNER
+        ).exists()
+        if not is_owner:
+            return Response({"detail": "Only owner can remove members."}, status=status.HTTP_403_FORBIDDEN)
+
+        member = get_object_or_404(TripMember.objects.select_related("user"), trip=trip, id=member_id)
+
+        # нельзя удалять owner'а
+        if member.role == TripMember.Role.OWNER:
+            return Response({"detail": "Cannot remove owner."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # нельзя удалять себя
+        if member.user_id == request.user.id:
+            return Response({"detail": "Cannot remove yourself."}, status=status.HTTP_400_BAD_REQUEST)
+
+        member.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"])
+    def leave(self, request, pk=None):
+        trip = self.get_object()
+
+        try:
+            membership = TripMember.objects.get(trip=trip, user=request.user)
+        except TripMember.DoesNotExist:
+            return Response({"detail": "You are not a member of this trip."}, status=status.HTTP_403_FORBIDDEN)
+
+        if membership.role == TripMember.Role.OWNER:
+            return Response(
+                {"detail": "Owner cannot leave the trip. Transfer ownership or delete the trip."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        membership.delete()
+        return Response({"detail": "Left the trip."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
     def balance(self, request, pk=None):
