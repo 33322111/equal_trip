@@ -24,7 +24,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'username', 'email')
+        fields = ('id', 'username', 'email', 'avatar')
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -32,3 +32,9 @@ class ProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = ("id", "username", "email", "avatar")
         read_only_fields = ("id",)
+
+
+class UserSearchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "username", "email", "avatar")

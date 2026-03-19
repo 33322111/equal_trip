@@ -21,7 +21,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from users.views import RegisterView, MeView, ProfileView
+from users.views import RegisterView, MeView, ProfileView, UserSearchView
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -43,6 +43,8 @@ urlpatterns = [
     path("api/", include("payments.urls")),
     path("api/", include("checklists.urls")),
     path("api/", include("itinerary.urls")),
+
+    path("api/users/search/", UserSearchView.as_view()),
 ]
 
 

@@ -1,6 +1,6 @@
 import { api } from "./http";
 
-export type UserShort = { id: number; username: string; email: string };
+export type UserShort = { id: number; username: string; email: string; avatar: string | null };
 
 export type Trip = {
   id: number;
@@ -65,5 +65,10 @@ export async function removeTripMember(tripId: number, memberId: number): Promis
 
 export async function leaveTrip(tripId: number): Promise<{ detail: string }> {
   const res = await api.post(`/trips/${tripId}/leave/`);
+  return res.data;
+}
+
+export async function addTripMember(tripId: number, userId: number): Promise<{ detail: string }> {
+  const res = await api.post(`/trips/${tripId}/members/add/`, { user_id: userId });
   return res.data;
 }

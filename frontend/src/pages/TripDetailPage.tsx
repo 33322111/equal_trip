@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Container,
   Typography,
@@ -13,13 +13,27 @@ import {
   TextField,
   IconButton,
   Stack,
+  CircularProgress,
+  Avatar,
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
+import PersonAddIcon from "@mui/icons-material/PersonAdd";
+
+import Autocomplete from "@mui/material/Autocomplete";
 
 import { useParams, useNavigate } from "react-router-dom";
 
-import { createInvite, getTrip, TripDetail, updateTrip, removeTripMember, leaveTrip } from "../api/trips";
+import {
+  createInvite,
+  getTrip,
+  TripDetail,
+  updateTrip,
+  removeTripMember,
+  leaveTrip,
+  addTripMember,
+} from "../api/trips";
+
 import { useAuth } from "../context/AuthContext";
 
 import {
@@ -46,14 +60,24 @@ import { listSettlements, Settlement } from "../api/settlements";
 
 import ReceiptDialog from "../components/ReceiptDialog";
 
+import { searchUsers } from "../api/users";
+
 const API_BASE_URL = "http://localhost:8000";
 const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
+
+type UserShort = {
+  id: number;
+  username: string;
+  email: string;
+  avatar?: string | null;
+};
 
 export default function TripDetailPage() {
   const { id } = useParams();
   const tripId = Number(id);
 
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [trip, setTrip] = useState<TripDetail | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
@@ -62,8 +86,8 @@ export default function TripDetailPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
-
   const [settlements, setSettlements] = useState<Settlement[]>([]);
+
   const [error, setError] = useState<string | null>(null);
 
   // Receipt dialog state
@@ -83,20 +107,15 @@ export default function TripDetailPage() {
   const [editTitle, setEditTitle] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
 
+  // Invite by search
+  const [userQuery, setUserQuery] = useState("");
+  const [userOptions, setUserOptions] = useState<UserShort[]>([]);
+  const [userLoading, setUserLoading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserShort | null>(null);
+  const [addingUser, setAddingUser] = useState(false);
+  const searchTimer = useRef<number | null>(null);
+
   const isOwner = trip?.owner?.id === user?.id;
-  const navigate = useNavigate();
-
-  const onLeaveTrip = async () => {
-  if (!window.confirm("Покинуть поездку?")) return;
-
-  try {
-    setError(null);
-    await leaveTrip(tripId);
-    navigate("/trips");
-  } catch (e) {
-    setError("Не удалось покинуть поездку.");
-  }
-};
 
   const formatTripDates = (start: string | null, end: string | null) => {
     if (!start && !end) return null;
@@ -128,35 +147,17 @@ export default function TripDetailPage() {
       if (s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth()) {
         return `${s.getDate()}–${e.getDate()} ${months[s.getMonth()]} ${s.getFullYear()}`;
       }
-
       return `${format(start)} – ${format(end)}`;
     }
 
     return start ? format(start) : format(end!);
   };
 
-  const onRemoveMember = async (memberId: number, label: string) => {
-  if (!window.confirm(`Удалить участника ${label} из поездки?`)) return;
-
-  try {
-    setError(null);
-    await removeTripMember(tripId, memberId);
-    await loadAll(); // обновим список участников
-  } catch (e: any) {
-    const msg = e?.response?.data?.detail || "Не удалось удалить участника.";
-    setError(String(msg));
-  }
-};
-
-  const membersById = useMemo(() => {
-    const map = new Map<number, { username: string; email: string }>();
-    if (trip?.members) {
-      for (const m of trip.members) {
-        map.set(m.user.id, { username: m.user.username, email: m.user.email });
-      }
-    }
-    return map;
-  }, [trip]);
+  const getAvatarSrc = (avatar?: string | null) => {
+    console.log(avatar);
+    if (!avatar) return undefined;
+    return toAbsUrl(avatar);
+  };
 
   const loadAll = async () => {
     setError(null);
@@ -175,7 +176,7 @@ export default function TripDetailPage() {
       setBalance(bal);
       setStats(st);
       setSettlements(pays);
-    } catch (e) {
+    } catch {
       setError("Не удалось загрузить данные поездки.");
     }
   };
@@ -186,6 +187,33 @@ export default function TripDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
+  // Leave trip
+  const onLeaveTrip = async () => {
+    if (!window.confirm("Покинуть поездку?")) return;
+    try {
+      setError(null);
+      await leaveTrip(tripId);
+      navigate("/trips");
+    } catch {
+      setError("Не удалось покинуть поездку.");
+    }
+  };
+
+  // Remove member
+  const onRemoveMember = async (memberId: number, label: string) => {
+    if (!window.confirm(`Удалить участника ${label} из поездки?`)) return;
+
+    try {
+      setError(null);
+      await removeTripMember(tripId, memberId);
+      await loadAll();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || "Не удалось удалить участника.";
+      setError(String(msg));
+    }
+  };
+
+  // Invite link
   const onCreateInvite = async () => {
     try {
       setError(null);
@@ -193,8 +221,59 @@ export default function TripDetailPage() {
       const url = `${window.location.origin}/join/${token}`;
       setInviteUrl(url);
       await navigator.clipboard.writeText(url);
-    } catch (e) {
+    } catch {
       setError("Не удалось создать приглашение.");
+    }
+  };
+
+  // Search users
+  useEffect(() => {
+    if (!isOwner) return;
+
+    if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    const q = userQuery.trim();
+
+    if (!q) {
+      setUserOptions([]);
+      return;
+    }
+
+    searchTimer.current = window.setTimeout(async () => {
+      setUserLoading(true);
+      try {
+        const res = await searchUsers(q);
+
+        // фильтруем уже добавленных
+        const existingUserIds = new Set((trip?.members ?? []).map((m) => m.user.id));
+        setUserOptions(res.filter((u: any) => !existingUserIds.has(u.id)));
+      } catch {
+        setError("Не удалось выполнить поиск пользователей.");
+      } finally {
+        setUserLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userQuery, isOwner, trip?.members?.length]);
+
+  const onAddMemberBySearch = async () => {
+    if (!selectedUser) return;
+    try {
+      setAddingUser(true);
+      setError(null);
+      await addTripMember(tripId, selectedUser.id);
+      setSelectedUser(null);
+      setUserQuery("");
+      setUserOptions([]);
+      await loadAll();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || "Не удалось добавить участника.";
+      setError(String(msg));
+    } finally {
+      setAddingUser(false);
     }
   };
 
@@ -216,7 +295,6 @@ export default function TripDetailPage() {
 
   const onDeleteReceipt = async () => {
     if (!receiptExpenseId) return;
-
     const ok = window.confirm("Удалить чек у расхода?");
     if (!ok) return;
 
@@ -225,7 +303,7 @@ export default function TripDetailPage() {
       await deleteExpenseReceipt(tripId, receiptExpenseId);
       onCloseReceipt();
       await loadAll();
-    } catch (e) {
+    } catch {
       setError("Не удалось удалить чек.");
     }
   };
@@ -258,16 +336,7 @@ export default function TripDetailPage() {
         end_date: editEndDate,
       });
 
-      setTrip((prev) =>
-        prev
-          ? {
-              ...prev,
-              start_date: updated.start_date,
-              end_date: updated.end_date,
-            }
-          : prev
-      );
-
+      setTrip((prev) => (prev ? { ...prev, start_date: updated.start_date, end_date: updated.end_date } : prev));
       setEditDatesOpen(false);
     } catch {
       setError("Не удалось обновить даты поездки.");
@@ -293,16 +362,7 @@ export default function TripDetailPage() {
     setSavingTitle(true);
     try {
       const updated = await updateTrip(tripId, { title: nextTitle });
-
-      setTrip((prev) =>
-        prev
-          ? {
-              ...prev,
-              title: updated.title,
-            }
-          : prev
-      );
-
+      setTrip((prev) => (prev ? { ...prev, title: updated.title } : prev));
       setEditTitleOpen(false);
     } catch {
       setError("Не удалось обновить название поездки.");
@@ -341,13 +401,11 @@ export default function TripDetailPage() {
             Редактировать даты
           </Button>
         ) : (
-    <Button variant="outlined" color="error" size="small" onClick={onLeaveTrip}>
-      Покинуть поездку
-    </Button>
-  )}
+          <Button variant="outlined" color="error" size="small" onClick={onLeaveTrip}>
+            Покинуть поездку
+          </Button>
+        )}
       </Box>
-
-
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -357,51 +415,122 @@ export default function TripDetailPage() {
 
       {/* УЧАСТНИКИ */}
       <Paper sx={{ p: 2, mb: 3 }}>
-  <Typography variant="h6">Участники</Typography>
+        <Typography variant="h6">Участники</Typography>
 
-  {trip.members.map((m) => {
-    const canRemove = isOwner && m.role === "MEMBER" && m.user.id !== user?.id;
+        {trip.members.map((m) => {
+          const canRemove = isOwner && m.role === "MEMBER" && m.user.id !== user?.id;
+          const avatarSrc = getAvatarSrc(m.user.avatar);
+          return (
+            <Box
+              key={m.id}
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              py={0.75}
+              gap={2}
+            >
+              <Box display="flex" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
+                <Avatar src={avatarSrc} sx={{ width: 34, height: 34 }} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography noWrap>
+                    {m.user.username} ({m.user.email})
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {m.role === "OWNER" ? "ВЛАДЕЛЕЦ" : "УЧАСТНИК"}
+                  </Typography>
+                </Box>
+              </Box>
 
-    return (
-      <Box key={m.id} display="flex" justifyContent="space-between" alignItems="center" py={0.5} gap={2}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography noWrap>
-            {m.user.username} ({m.user.email})
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {m.role === "OWNER" ? "ВЛАДЕЛЕЦ" : "УЧАСТНИК"}
-          </Typography>
-        </Box>
-
-        {canRemove ? (
-          <Button
-            color="error"
-            variant="outlined"
-            size="small"
-            onClick={() => onRemoveMember(m.id, m.user.username)}
-          >
-            Удалить
-          </Button>
-        ) : null}
-      </Box>
-    );
-  })}
-</Paper>
+              {canRemove ? (
+                <Button
+                  color="error"
+                  variant="outlined"
+                  size="small"
+                  onClick={() => onRemoveMember(m.id, m.user.username)}
+                >
+                  Удалить
+                </Button>
+              ) : null}
+            </Box>
+          );
+        })}
+      </Paper>
 
       {/* INVITE */}
       {isOwner && (
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Приглашение по ссылке
+            Пригласить участников
           </Typography>
-          <Button variant="contained" onClick={onCreateInvite}>
-            Сгенерировать ссылку (и скопировать)
-          </Button>
-          {inviteUrl && (
-            <Typography sx={{ mt: 2 }} color="text.secondary">
-              {inviteUrl}
-            </Typography>
-          )}
+
+          <Stack spacing={2}>
+            <Button variant="contained" onClick={onCreateInvite}>
+              Сгенерировать ссылку (и скопировать)
+            </Button>
+
+            {inviteUrl && (
+              <Typography color="text.secondary" sx={{ wordBreak: "break-all" }}>
+                {inviteUrl}
+              </Typography>
+            )}
+
+            <Autocomplete
+              options={userOptions}
+              loading={userLoading}
+              value={selectedUser}
+              inputValue={userQuery}
+              onInputChange={(_, v) => setUserQuery(v)}
+              onChange={(_, v) => setSelectedUser(v)}
+              getOptionLabel={(u) => `${u.username} (${u.email})`}
+              isOptionEqualToValue={(a, b) => a.id === b.id}
+              noOptionsText={userQuery.trim() ? "Ничего не найдено" : "Начни вводить никнейм"}
+              renderOption={(props, option) => (
+    <li {...props} key={option.id}>
+      <Box display="flex" alignItems="center" gap={1.5} sx={{ width: "100%" }}>
+        <Avatar
+          src={getAvatarSrc(option.avatar)}
+          alt={option.username}
+          sx={{ width: 28, height: 28 }}
+          imgProps={{ referrerPolicy: "no-referrer" }}
+        >
+          {option.username.slice(0, 1).toUpperCase()}
+        </Avatar>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography noWrap>{option.username}</Typography>
+          <Typography variant="body2" color="text.secondary" noWrap>
+            {option.email}
+          </Typography>
+        </Box>
+      </Box>
+    </li>
+  )}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Найти пользователя по никнейму"
+                  placeholder="Например: nickname"
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {userLoading ? <CircularProgress size={18} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+            />
+
+            <Button
+              variant="outlined"
+              startIcon={<PersonAddIcon />}
+              disabled={!selectedUser || addingUser}
+              onClick={onAddMemberBySearch}
+            >
+              Добавить в поездку
+            </Button>
+          </Stack>
         </Paper>
       )}
 

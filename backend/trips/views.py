@@ -12,6 +12,9 @@ from .serializers import (
 from .permissions import IsTripMember
 from expenses.services import compute_balance
 from expenses.stats import compute_stats
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class TripViewSet(viewsets.ModelViewSet):
@@ -90,6 +93,36 @@ class TripViewSet(viewsets.ModelViewSet):
 
         membership.delete()
         return Response({"detail": "Left the trip."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path=r"members/add")
+    def add_member(self, request, pk=None):
+        trip = self.get_object()
+
+        is_owner = TripMember.objects.filter(
+            trip=trip, user=request.user, role=TripMember.Role.OWNER
+        ).exists()
+        if not is_owner:
+            return Response({"detail": "Only owner can add members."}, status=status.HTTP_403_FORBIDDEN)
+
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"detail": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            target_user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        membership, created = TripMember.objects.get_or_create(
+            trip=trip,
+            user=target_user,
+            defaults={"role": TripMember.Role.MEMBER},
+        )
+
+        if not created:
+            return Response({"detail": "User is already a member."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"detail": "Member added."}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"])
     def balance(self, request, pk=None):
