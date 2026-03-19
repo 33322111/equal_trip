@@ -1,16 +1,28 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { YMaps, Map, Placemark } from "@pbe/react-yandex-maps";
-import { Paper, Typography } from "@mui/material";
+import { Box, Chip, Divider, Paper, Stack, Typography } from "@mui/material";
 import { Expense } from "../api/expenses";
 
 interface Props {
   expenses: Expense[];
 }
 
-const DEFAULT_CENTER: [number, number] = [55.751244, 37.618423]; // Москва
+const DEFAULT_CENTER: [number, number] = [55.751244, 37.618423];
+
+function formatExpenseDate(value: string | null) {
+  if (!value) return "Дата не указана";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Дата не указана";
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
 
 export default function TripMap({ expenses }: Props) {
-  const points = expenses.filter((e) => e.lat && e.lng);
+  const points = useMemo(() => expenses.filter((e) => e.lat && e.lng), [expenses]);
+  const [selectedExpenseId, setSelectedExpenseId] = useState<number | null>(points[0]?.id ?? null);
+  const selectedExpense = points.find((expense) => expense.id === selectedExpenseId) ?? points[0] ?? null;
 
   const center: [number, number] =
     points.length > 0
@@ -23,12 +35,10 @@ export default function TripMap({ expenses }: Props) {
         Карта поездки
       </Typography>
 
+      {!points.length ? <Typography color="text.secondary">Расходы с координатами пока не добавлены.</Typography> : null}
+
       <YMaps query={{ apikey: import.meta.env.VITE_YMAPS_API_KEY }}>
-        <Map
-          defaultState={{ center, zoom: 10 }}
-          width="100%"
-          height={400}
-        >
+        <Map defaultState={{ center, zoom: 10 }} width="100%" height={400}>
           {points.map((e) => (
             <Placemark
               key={e.id}
@@ -37,13 +47,47 @@ export default function TripMap({ expenses }: Props) {
                 balloonContent: `
                   <b>${e.title}</b><br/>
                   ${e.amount} ${e.currency}<br/>
-                  оплатил: ${e.created_by.username}
+                  ${e.category?.name ?? "Без категории"}<br/>
+                  ${e.created_by.username}<br/>
+                  ${formatExpenseDate(e.created_at)}
                 `,
               }}
+              options={{
+                preset: selectedExpense?.id === e.id ? "islands#redIcon" : "islands#blueIcon",
+              }}
+              onClick={() => setSelectedExpenseId(e.id)}
             />
           ))}
         </Map>
       </YMaps>
+
+      {selectedExpense ? (
+        <Paper
+          variant="outlined"
+          sx={{
+            mt: 2,
+            p: 2,
+            borderRadius: 2,
+            background: "linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(255,255,255,1) 100%)",
+          }}
+        >
+          <Stack spacing={1.5}>
+            <Box display="flex" justifyContent="space-between" gap={2} alignItems="flex-start">
+              <Box>
+                <Typography variant="h6">{selectedExpense.title}</Typography>
+                <Typography color="text.secondary">{selectedExpense.category?.name ?? "Без категории"}</Typography>
+              </Box>
+              <Chip color="primary" label={`${selectedExpense.amount} ${selectedExpense.currency}`} sx={{ fontWeight: 600 }} />
+            </Box>
+            <Divider />
+            <Typography>Автор: {selectedExpense.created_by.username}</Typography>
+            <Typography>Время добавления: {formatExpenseDate(selectedExpense.created_at)}</Typography>
+            <Typography>
+              Координаты: {Number(selectedExpense.lat).toFixed(6)}, {Number(selectedExpense.lng).toFixed(6)}
+            </Typography>
+          </Stack>
+        </Paper>
+      ) : null}
     </Paper>
   );
 }

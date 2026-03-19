@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Paper,
   Typography,
@@ -9,7 +9,9 @@ import {
   Box,
   IconButton,
   MenuItem,
+  InputAdornment,
 } from "@mui/material";
+import { YMaps, Map as YandexMap, Placemark, SearchControl } from "@pbe/react-yandex-maps";
 
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -37,6 +39,7 @@ import { TripDetail } from "../../../api/trips";
 import ReceiptDialog from "../../../components/ReceiptDialog";
 
 const API_BASE_URL = "http://localhost:8000";
+const DEFAULT_MAP_CENTER: [number, number] = [55.751244, 37.618423];
 
 type Props = {
   tripId: number;
@@ -69,7 +72,11 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const [formAmount, setFormAmount] = useState<string>("");
   const [formCategoryId, setFormCategoryId] = useState<number | "">("");
   const [formCurrency, setFormCurrency] = useState<string>("RUB");
+  const [formLat, setFormLat] = useState<number | null>(null);
+  const [formLng, setFormLng] = useState<number | null>(null);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(DEFAULT_MAP_CENTER);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const searchControlRef = useRef<any>(null);
 
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
@@ -116,6 +123,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     e.preventDefault();
 
     const amountNum = Number(formAmount);
+    const hasLat = formLat !== null;
+    const hasLng = formLng !== null;
+    const hasCoords = Number.isFinite(formLat) && Number.isFinite(formLng);
     if (!formTitle.trim()) {
       onError("Введите название расхода.");
       return;
@@ -124,28 +134,56 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
       onError("Введите корректную сумму > 0.");
       return;
     }
+    if ((hasLat || hasLng) && !hasCoords) {
+      onError("Введите корректные координаты или очистите точку на карте.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
-      await createExpense(tripId, {
+      const payload: {
+        title: string;
+        amount: number;
+        currency: string;
+        category_id: number | null;
+        lat?: number;
+        lng?: number;
+      } = {
         title: formTitle.trim(),
         amount: amountNum,
         currency: formCurrency,
         category_id: formCategoryId === "" ? null : formCategoryId,
-        // MVP координаты – можно позже сделать выбор точки на карте
-        lat: 55.751244,
-        lng: 37.618423,
-      });
+      };
+
+      if (hasCoords) {
+        payload.lat = formLat;
+        payload.lng = formLng;
+      }
+
+      await createExpense(tripId, payload);
 
       setFormTitle("");
       setFormAmount("");
       setFormCategoryId("");
       setFormCurrency("RUB");
+      setFormLat(null);
+      setFormLng(null);
+      setMapCenter(DEFAULT_MAP_CENTER);
 
       await loadLocal();
       if (onAfterChange) await onAfterChange();
-    } catch {
-      onError("Не удалось добавить расход. Проверь данные и попробуй снова.");
+    } catch (e: any) {
+      const data = e?.response?.data;
+      const message =
+        data?.detail ||
+        data?.non_field_errors?.[0] ||
+        data?.amount?.[0] ||
+        data?.currency?.[0] ||
+        data?.category_id?.[0] ||
+        data?.lat?.[0] ||
+        data?.lng?.[0] ||
+        "Не удалось добавить расход. Проверь данные и попробуй снова.";
+      onError(String(message));
     } finally {
       setIsSubmitting(false);
     }
@@ -219,6 +257,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     downloadReceipt(receiptUrl, guessFilename(receiptUrl, "receipt.jpg"));
   };
 
+  const selectedPoint =
+    formLat !== null && formLng !== null ? ([formLat, formLng] as [number, number]) : null;
+
   return (
     <>
       <Paper sx={{ p: 2, mb: 3 }}>
@@ -243,6 +284,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
               onChange={(e) => setFormAmount(e.target.value)}
               fullWidth
               required
+              InputProps={{
+                endAdornment: <InputAdornment position="end">{formCurrency}</InputAdornment>,
+              }}
             />
 
             <Autocomplete
@@ -280,6 +324,82 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
               Добавить
             </Button>
           </Stack>
+
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Точка расхода на карте
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Нажми на карту, чтобы выбрать место расхода. Поле можно оставить пустым.
+            </Typography>
+
+            <YMaps query={{ apikey: import.meta.env.VITE_YMAPS_API_KEY }}>
+              <YandexMap
+                state={{ center: mapCenter, zoom: 10 }}
+                width="100%"
+                height={260}
+                onClick={(event: any) => {
+                  const coords = event.get("coords") as number[] | undefined;
+                  if (!coords || coords.length < 2) return;
+                  const nextLat = Number(coords[0].toFixed(6));
+                  const nextLng = Number(coords[1].toFixed(6));
+                  setFormLat(nextLat);
+                  setFormLng(nextLng);
+                  setMapCenter([nextLat, nextLng]);
+                }}
+              >
+                <SearchControl
+                  instanceRef={searchControlRef}
+                  options={{
+                    float: "right",
+                    noPlacemark: true,
+                    placeholderContent: "Найти адрес или место",
+                  }}
+                  modules={["control.SearchControl"]}
+                  onResultSelect={async (event: any) => {
+                    const index = event.get("index");
+                    const control = searchControlRef.current;
+                    if (!control) return;
+                    const result = await control.getResult(index);
+                    const coords = result?.geometry?.getCoordinates?.();
+                    if (!coords || coords.length < 2) return;
+                    const nextLat = Number(coords[0].toFixed(6));
+                    const nextLng = Number(coords[1].toFixed(6));
+                    setFormLat(nextLat);
+                    setFormLng(nextLng);
+                    setMapCenter([nextLat, nextLng]);
+                  }}
+                />
+                {selectedPoint ? <Placemark geometry={selectedPoint} /> : null}
+              </YandexMap>
+            </YMaps>
+
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 1.5 }}>
+              <TextField
+                label="Широта"
+                value={formLat ?? ""}
+                onChange={(e) => setFormLat(e.target.value === "" ? null : Number(e.target.value))}
+                fullWidth
+              />
+              <TextField
+                label="Долгота"
+                value={formLng ?? ""}
+                onChange={(e) => setFormLng(e.target.value === "" ? null : Number(e.target.value))}
+                fullWidth
+              />
+              <Button
+                variant="outlined"
+                color="inherit"
+                onClick={() => {
+                  setFormLat(null);
+                  setFormLng(null);
+                  setMapCenter(DEFAULT_MAP_CENTER);
+                }}
+              >
+                Очистить
+              </Button>
+            </Stack>
+          </Box>
         </Box>
 
         <Divider sx={{ mb: 2 }} />

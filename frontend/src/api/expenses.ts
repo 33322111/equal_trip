@@ -15,6 +15,8 @@ export type Expense = {
   shares: { id: number; user: { id: number; username: string; email: string }; weight: string }[];
   amount_rub: string;
   fx_rate: string;
+  lat?: string | null;
+  lng?: string | null;
 };
 
 export type BalanceResponse = {
@@ -42,8 +44,8 @@ export async function createExpense(
     currency?: string;
     spent_at?: string | null;
     category_id?: number | null;
-    lat: number,
-    lng: number,
+    lat?: number | null;
+    lng?: number | null;
   }
 ): Promise<Expense> {
   const res = await api.post(`/trips/${tripId}/expenses/`, payload);
