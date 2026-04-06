@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Container, Typography } from "@mui/material";
+import { Container, Typography, Box, Paper } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
 import { acceptInvite } from "../api/trips";
 
@@ -22,8 +22,12 @@ export default function JoinByInvitePage() {
   }, [token, navigate]);
 
   return (
-    <Container sx={{ mt: 8 }}>
-      <Typography>{status}</Typography>
-    </Container>
+    <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 4, md: 8 } }}>
+      <Container maxWidth="sm">
+        <Paper sx={{ p: { xs: 2.5, md: 4 }, borderRadius: 4, border: "1px solid #d6dee6", boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" }}>
+          <Typography>{status}</Typography>
+        </Paper>
+      </Container>
+    </Box>
   );
 }

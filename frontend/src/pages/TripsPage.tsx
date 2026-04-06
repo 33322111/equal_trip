@@ -9,11 +9,69 @@ import {
   Alert,
   Stack,
   MenuItem,
+  Collapse,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { Link } from "react-router-dom";
 import { listTrips, createTrip, Trip } from "../api/trips";
 
 type SortOrder = "asc" | "desc";
+type TripsSectionKey = "create" | "current" | "upcoming" | "past";
+
+function PageSection({
+  title,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  title: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Paper
+      sx={{
+        mb: 3,
+        px: { xs: 1.5, md: 2 },
+        py: 1.5,
+        borderRadius: 3,
+        border: "1px solid #dbe3ea",
+        backgroundColor: "#f8fafc",
+        boxShadow: "0 14px 34px rgba(15, 23, 42, 0.06)",
+      }}
+    >
+      <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+        <Typography variant="h6">{title}</Typography>
+        <Button
+          variant="text"
+          size="small"
+          onClick={onToggle}
+          endIcon={collapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+          sx={{ color: "#475569", minWidth: 0 }}
+        >
+          {collapsed ? "Развернуть" : "Свернуть"}
+        </Button>
+      </Box>
+
+      <Collapse in={!collapsed}>
+        <Box
+          sx={{
+            pt: 2,
+            "& > .MuiPaper-root": {
+              borderRadius: 3,
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 10px 24px rgba(15, 23, 42, 0.05)",
+            },
+          }}
+        >
+          {children}
+        </Box>
+      </Collapse>
+    </Paper>
+  );
+}
 
 export default function TripsPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -27,6 +85,12 @@ export default function TripsPage() {
   const [sortCurrent, setSortCurrent] = useState<SortOrder>("asc");
   const [sortUpcoming, setSortUpcoming] = useState<SortOrder>("asc");
   const [sortPast, setSortPast] = useState<SortOrder>("desc");
+  const [collapsedSections, setCollapsedSections] = useState<Record<TripsSectionKey, boolean>>({
+    create: false,
+    current: false,
+    upcoming: false,
+    past: false,
+  });
 
   const load = async () => {
     const data = await listTrips();
@@ -36,6 +100,10 @@ export default function TripsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  const toggleSection = (key: TripsSectionKey) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const onCreate = async () => {
     setError(null);
@@ -169,16 +237,20 @@ export default function TripsPage() {
     trips,
     sortOrder,
     onChangeSort,
+    collapsed,
+    onToggle,
   }: {
     title: string;
     trips: Trip[];
     sortOrder: SortOrder;
     onChangeSort: (v: SortOrder) => void;
+    collapsed: boolean;
+    onToggle: () => void;
   }) => {
     if (trips.length === 0) return null;
 
     return (
-      <Paper sx={{ p: 2, mb: 2 }}>
+      <PageSection title={title} collapsed={collapsed} onToggle={onToggle}>
         <Stack
           direction={{ xs: "column", sm: "row" }}
           alignItems={{ xs: "stretch", sm: "center" }}
@@ -186,7 +258,9 @@ export default function TripsPage() {
           gap={2}
           sx={{ mb: 1 }}
         >
-          <Typography variant="h6">{title}</Typography>
+          <Typography variant="subtitle1" sx={{ color: "#475569" }}>
+            Всего поездок: {trips.length}
+          </Typography>
 
           <TextField
             select
@@ -201,9 +275,9 @@ export default function TripsPage() {
           </TextField>
         </Stack>
 
-        <Box display="flex" flexDirection="column" gap={1}>
+        <Box display="flex" flexDirection="column" gap={1.25}>
           {trips.map((t) => (
-            <Paper key={t.id} variant="outlined" sx={{ p: 2 }}>
+            <Paper key={t.id} variant="outlined" sx={{ p: 2.25, backgroundColor: "#ffffff" }}>
               <Typography variant="h6" sx={{ mb: 0.5 }}>
                 <Link to={`/trips/${t.id}`}>{t.title}</Link>
               </Typography>
@@ -220,83 +294,116 @@ export default function TripsPage() {
             </Paper>
           ))}
         </Box>
-      </Paper>
+      </PageSection>
     );
   };
 
   return (
-    <Container sx={{ mt: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">Мои поездки</Typography>
-      </Box>
+    <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
+      <Container>
+        <Paper
+          sx={{
+            p: { xs: 2, md: 3 },
+            mb: 3,
+            borderRadius: 4,
+            border: "1px solid #d6dee6",
+            background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+            boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+            <Typography variant="h4" sx={{ color: "#0f172a" }}>
+              Мои поездки
+            </Typography>
+          </Box>
+          <Typography color="text.secondary">
+            Управляй поездками, следи за активными планами и быстро возвращайся к завершённым маршрутам.
+          </Typography>
+        </Paper>
 
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Создать поездку
-        </Typography>
+        <PageSection
+          title="Создать поездку"
+          collapsed={collapsedSections.create}
+          onToggle={() => toggleSection("create")}
+        >
+          {error && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+              {error}
+            </Alert>
+          )}
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
+          <Box display="flex" gap={2} flexWrap="wrap">
+            <TextField
+              label="Название"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              fullWidth
+            />
+
+            <TextField
+              label="Дата начала"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 200 }}
+            />
+
+            <TextField
+              label="Дата окончания"
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 200 }}
+            />
+
+            <Button variant="contained" onClick={onCreate} disabled={isCreating}>
+              Создать
+            </Button>
+          </Box>
+        </PageSection>
+
+        <Section
+          title="Текущие поездки"
+          trips={currentTrips}
+          sortOrder={sortCurrent}
+          onChangeSort={setSortCurrent}
+          collapsed={collapsedSections.current}
+          onToggle={() => toggleSection("current")}
+        />
+
+        <Section
+          title="Предстоящие поездки"
+          trips={upcomingTrips}
+          sortOrder={sortUpcoming}
+          onChangeSort={setSortUpcoming}
+          collapsed={collapsedSections.upcoming}
+          onToggle={() => toggleSection("upcoming")}
+        />
+
+        <Section
+          title="Завершенные поездки"
+          trips={pastTrips}
+          sortOrder={sortPast}
+          onChangeSort={setSortPast}
+          collapsed={collapsedSections.past}
+          onToggle={() => toggleSection("past")}
+        />
+
+        {trips.length === 0 && (
+          <Paper
+            sx={{
+              p: 3,
+              borderRadius: 3,
+              border: "1px dashed #cbd5e1",
+              backgroundColor: "#f8fafc",
+            }}
+          >
+            <Typography color="text.secondary">Пока нет поездок. Создай первую</Typography>
+          </Paper>
         )}
-
-        <Box display="flex" gap={2} flexWrap="wrap">
-          <TextField
-            label="Название"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            fullWidth
-          />
-
-          <TextField
-            label="Дата начала"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 200 }}
-          />
-
-          <TextField
-            label="Дата окончания"
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 200 }}
-          />
-
-          <Button variant="contained" onClick={onCreate} disabled={isCreating}>
-            Создать
-          </Button>
-        </Box>
-      </Paper>
-
-      <Section
-        title="Текущие поездки"
-        trips={currentTrips}
-        sortOrder={sortCurrent}
-        onChangeSort={setSortCurrent}
-      />
-
-      <Section
-        title="Предстоящие поездки"
-        trips={upcomingTrips}
-        sortOrder={sortUpcoming}
-        onChangeSort={setSortUpcoming}
-      />
-
-      <Section
-        title="Завершенные поездки"
-        trips={pastTrips}
-        sortOrder={sortPast}
-        onChangeSort={setSortPast}
-      />
-
-      {trips.length === 0 && (
-        <Typography color="text.secondary">Пока нет поездок. Создай первую</Typography>
-      )}
-    </Container>
+      </Container>
+    </Box>
   );
 }

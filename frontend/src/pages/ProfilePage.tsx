@@ -7,6 +7,7 @@ import {
   Avatar,
   Box,
   Alert,
+  Paper,
 } from "@mui/material";
 import { getProfile, updateProfile, Profile } from "../api/profile";
 
@@ -102,74 +103,74 @@ export default function ProfilePage() {
   if (!profile) return <div>Загрузка...</div>;
 
   return (
-    <Container maxWidth="sm" sx={{ mt: 6 }}>
-      <Typography variant="h4" gutterBottom>
-        Профиль
-      </Typography>
+    <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 4, md: 6 } }}>
+      <Container maxWidth="sm">
+        <Paper sx={{ p: { xs: 2.5, md: 4 }, borderRadius: 4, border: "1px solid #d6dee6", boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" }}>
+          <Typography variant="h4" gutterBottom>
+            Профиль
+          </Typography>
 
-      {status === "success" && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          Профиль обновлён
-        </Alert>
-      )}
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
+          {status === "success" && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              Профиль обновлён
+            </Alert>
+          )}
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
 
-      <Box component="form" onSubmit={onSubmit}>
-        <Box display="flex" alignItems="center" gap={2} mb={3}>
-          <Avatar src={avatarSrc} sx={{ width: 80, height: 80 }} />
+          <Box component="form" onSubmit={onSubmit}>
+            <Box display="flex" alignItems="center" gap={2} mb={3}>
+              <Avatar src={avatarSrc} sx={{ width: 80, height: 80 }} />
 
-          <Box display="flex" flexDirection="column" gap={1}>
-            <Button variant="outlined" component="label">
-    Загрузить аватар
-    <input
-      ref={fileInputRef}
-      type="file"
-      hidden
-      accept="image/*"
-      onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
-    />
-  </Button>
+              <Box display="flex" flexDirection="column" gap={1}>
+                <Button variant="outlined" component="label">
+                  Загрузить аватар
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    hidden
+                    accept="image/*"
+                    onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
+                  />
+                </Button>
 
-            {avatarFile ? (
-    <Button
-      variant="outlined"
-      color="error"
-      onClick={() => onPickAvatar(null)}
-    >
-      Сбросить выбор
-    </Button>
-  ) : null}
+                {avatarFile ? (
+                  <Button variant="outlined" color="error" onClick={() => onPickAvatar(null)}>
+                    Сбросить выбор
+                  </Button>
+                ) : null}
+              </Box>
+            </Box>
+
+            <TextField
+              label="Имя пользователя"
+              fullWidth
+              margin="normal"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+            <TextField
+              label="Email"
+              fullWidth
+              margin="normal"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={status === "saving"}
+              sx={{ mt: 2 }}
+            >
+              Сохранить
+            </Button>
           </Box>
-        </Box>
-
-        <TextField
-          label="Имя пользователя"
-          fullWidth
-          margin="normal"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <TextField
-          label="Email"
-          fullWidth
-          margin="normal"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-
-        <Button
-          type="submit"
-          variant="contained"
-          disabled={status === "saving"}
-          sx={{ mt: 2 }}
-        >
-          Сохранить
-        </Button>
-      </Box>
-    </Container>
+        </Paper>
+      </Container>
+    </Box>
   );
 }

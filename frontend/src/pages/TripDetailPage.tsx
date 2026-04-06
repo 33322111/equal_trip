@@ -15,10 +15,13 @@ import {
   Stack,
   CircularProgress,
   Avatar,
+  Collapse,
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 
 import Autocomplete from "@mui/material/Autocomplete";
 
@@ -72,6 +75,71 @@ type UserShort = {
   avatar?: string | null;
 };
 
+type SectionKey =
+  | "members"
+  | "invite"
+  | "checklists"
+  | "itinerary"
+  | "expenses"
+  | "map"
+  | "balance"
+  | "stats"
+  | "actions";
+
+function TripSection({
+  title,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  title: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Paper
+      sx={{
+        mb: 3,
+        px: { xs: 1.5, md: 2 },
+        py: 1.5,
+        borderRadius: 3,
+        border: "1px solid #dbe3ea",
+        backgroundColor: "#f8fafc",
+        boxShadow: "0 14px 34px rgba(15, 23, 42, 0.06)",
+      }}
+    >
+      <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+        <Typography variant="h6">{title}</Typography>
+        <Button
+          variant="text"
+          size="small"
+          onClick={onToggle}
+          endIcon={collapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+          sx={{ color: "#475569", minWidth: 0 }}
+        >
+          {collapsed ? "Развернуть" : "Свернуть"}
+        </Button>
+      </Box>
+
+      <Collapse in={!collapsed}>
+        <Box
+          sx={{
+            pt: 2,
+            "& > .MuiPaper-root": {
+              borderRadius: 3,
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 10px 24px rgba(15, 23, 42, 0.05)",
+            },
+          }}
+        >
+          {children}
+        </Box>
+      </Collapse>
+    </Paper>
+  );
+}
+
 export default function TripDetailPage() {
   const { id } = useParams();
   const tripId = Number(id);
@@ -114,6 +182,17 @@ export default function TripDetailPage() {
   const [selectedUser, setSelectedUser] = useState<UserShort | null>(null);
   const [addingUser, setAddingUser] = useState(false);
   const searchTimer = useRef<number | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Record<SectionKey, boolean>>({
+    members: false,
+    invite: false,
+    checklists: false,
+    itinerary: false,
+    expenses: false,
+    map: false,
+    balance: false,
+    stats: false,
+    actions: false,
+  });
 
   const isOwner = trip?.owner?.id === user?.id;
 
@@ -154,9 +233,12 @@ export default function TripDetailPage() {
   };
 
   const getAvatarSrc = (avatar?: string | null) => {
-    console.log(avatar);
     if (!avatar) return undefined;
     return toAbsUrl(avatar);
+  };
+
+  const toggleSection = (key: SectionKey) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const loadAll = async () => {
@@ -374,211 +456,266 @@ export default function TripDetailPage() {
   if (!trip) return <div>Загрузка...</div>;
 
   return (
-    <Container sx={{ mt: 4, mb: 6 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2} gap={2}>
-        <Box sx={{ minWidth: 0 }}>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-            <Typography variant="h4" sx={{ wordBreak: "break-word" }}>
-              {trip.title}
-            </Typography>
+    <>
+    <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
+      <Container sx={{ mb: 6 }}>
+        <Paper
+          sx={{
+            p: { xs: 2, md: 3 },
+            mb: 3,
+            borderRadius: 4,
+            border: "1px solid #d6dee6",
+            background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+            boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
+            <Box sx={{ minWidth: 0 }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                <Typography variant="h4" sx={{ wordBreak: "break-word", color: "#0f172a" }}>
+                  {trip.title}
+                </Typography>
 
-            {isOwner ? (
-              <IconButton size="small" onClick={openEditTitle} aria-label="edit-title">
-                <EditIcon fontSize="small" />
-              </IconButton>
-            ) : null}
-          </Stack>
+                {isOwner ? (
+                  <IconButton size="small" onClick={openEditTitle} aria-label="edit-title">
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                ) : null}
+              </Stack>
 
-          {formatTripDates(trip.start_date, trip.end_date) ? (
-            <Typography variant="subtitle1" color="text.secondary">
-              {formatTripDates(trip.start_date, trip.end_date)}
-            </Typography>
-          ) : null}
-        </Box>
-
-        {isOwner ? (
-          <Button variant="outlined" size="small" onClick={openEditDates}>
-            Редактировать даты
-          </Button>
-        ) : (
-          <Button variant="outlined" color="error" size="small" onClick={onLeaveTrip}>
-            Покинуть поездку
-          </Button>
-        )}
-      </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {/* УЧАСТНИКИ */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6">Участники</Typography>
-
-        {trip.members.map((m) => {
-          const canRemove = isOwner && m.role === "MEMBER" && m.user.id !== user?.id;
-          const avatarSrc = getAvatarSrc(m.user.avatar);
-          return (
-            <Box
-              key={m.id}
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              py={0.75}
-              gap={2}
-            >
-              <Box display="flex" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
-                <Avatar src={avatarSrc} sx={{ width: 34, height: 34 }} />
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography noWrap>
-                    {m.user.username} ({m.user.email})
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {m.role === "OWNER" ? "ВЛАДЕЛЕЦ" : "УЧАСТНИК"}
-                  </Typography>
-                </Box>
-              </Box>
-
-              {canRemove ? (
-                <Button
-                  color="error"
-                  variant="outlined"
-                  size="small"
-                  onClick={() => onRemoveMember(m.id, m.user.username)}
-                >
-                  Удалить
-                </Button>
+              {formatTripDates(trip.start_date, trip.end_date) ? (
+                <Typography variant="subtitle1" color="text.secondary">
+                  {formatTripDates(trip.start_date, trip.end_date)}
+                </Typography>
               ) : null}
             </Box>
-          );
-        })}
-      </Paper>
 
-      {/* INVITE */}
-      {isOwner && (
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Пригласить участников
-          </Typography>
-
-          <Stack spacing={2}>
-            <Button variant="contained" onClick={onCreateInvite}>
-              Сгенерировать ссылку (и скопировать)
-            </Button>
-
-            {inviteUrl && (
-              <Typography color="text.secondary" sx={{ wordBreak: "break-all" }}>
-                {inviteUrl}
-              </Typography>
+            {isOwner ? (
+              <Button variant="outlined" size="small" onClick={openEditDates}>
+                Редактировать даты
+              </Button>
+            ) : (
+              <Button variant="outlined" color="error" size="small" onClick={onLeaveTrip}>
+                Покинуть поездку
+              </Button>
             )}
-
-            <Autocomplete
-              options={userOptions}
-              loading={userLoading}
-              value={selectedUser}
-              inputValue={userQuery}
-              onInputChange={(_, v) => setUserQuery(v)}
-              onChange={(_, v) => setSelectedUser(v)}
-              getOptionLabel={(u) => `${u.username} (${u.email})`}
-              isOptionEqualToValue={(a, b) => a.id === b.id}
-              noOptionsText={userQuery.trim() ? "Ничего не найдено" : "Начни вводить никнейм"}
-              renderOption={(props, option) => (
-    <li {...props} key={option.id}>
-      <Box display="flex" alignItems="center" gap={1.5} sx={{ width: "100%" }}>
-        <Avatar
-          src={getAvatarSrc(option.avatar)}
-          alt={option.username}
-          sx={{ width: 28, height: 28 }}
-          imgProps={{ referrerPolicy: "no-referrer" }}
-        >
-          {option.username.slice(0, 1).toUpperCase()}
-        </Avatar>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography noWrap>{option.username}</Typography>
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {option.email}
-          </Typography>
-        </Box>
-      </Box>
-    </li>
-  )}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Найти пользователя по никнейму"
-                  placeholder="Например: nickname"
-                  InputProps={{
-                    ...params.InputProps,
-                    endAdornment: (
-                      <>
-                        {userLoading ? <CircularProgress size={18} /> : null}
-                        {params.InputProps.endAdornment}
-                      </>
-                    ),
-                  }}
-                />
-              )}
-            />
-
-            <Button
-              variant="outlined"
-              startIcon={<PersonAddIcon />}
-              disabled={!selectedUser || addingUser}
-              onClick={onAddMemberBySearch}
-            >
-              Добавить в поездку
-            </Button>
-          </Stack>
+          </Box>
         </Paper>
-      )}
 
-      <ChecklistSection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
-      <ItinerarySection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
+        {error && (
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
+            {error}
+          </Alert>
+        )}
 
-      <ExpensesSection
-        tripId={tripId}
-        trip={trip}
-        onError={(msg) => setError(msg)}
-        onAfterChange={loadAll}
-        onOpenReceipt={onOpenReceipt}
-      />
+        <TripSection
+          title="Участники"
+          collapsed={collapsedSections.members}
+          onToggle={() => toggleSection("members")}
+        >
+          <Box sx={{ px: 0.5 }}>
+            {trip.members.map((m) => {
+              const canRemove = isOwner && m.role === "MEMBER" && m.user.id !== user?.id;
+              const avatarSrc = getAvatarSrc(m.user.avatar);
+              return (
+                <Box
+                  key={m.id}
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  py={0.9}
+                  gap={2}
+                >
+                  <Box display="flex" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
+                    <Avatar src={avatarSrc} sx={{ width: 36, height: 36 }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography noWrap>
+                        {m.user.username} ({m.user.email})
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {m.role === "OWNER" ? "ВЛАДЕЛЕЦ" : "УЧАСТНИК"}
+                      </Typography>
+                    </Box>
+                  </Box>
 
-      <Box mt={3}>
-        <TripMap expenses={expenses} />
-      </Box>
+                  {canRemove ? (
+                    <Button
+                      color="error"
+                      variant="outlined"
+                      size="small"
+                      onClick={() => onRemoveMember(m.id, m.user.username)}
+                    >
+                      Удалить
+                    </Button>
+                  ) : null}
+                </Box>
+              );
+            })}
+          </Box>
+        </TripSection>
 
-      <BalanceSettlementsSection
-        tripId={tripId}
-        userId={user?.id}
-        isOwner={isOwner}
-        members={trip.members}
-        balance={balance}
-        settlements={settlements}
-        onAfterChange={loadAll}
-        onError={(msg) => setError(msg)}
-      />
+        {isOwner && (
+          <TripSection
+            title="Приглашение"
+            collapsed={collapsedSections.invite}
+            onToggle={() => toggleSection("invite")}
+          >
+            <Stack spacing={2}>
+              <Button variant="contained" onClick={onCreateInvite}>
+                Сгенерировать ссылку (и скопировать)
+              </Button>
 
-      {stats && (
-        <Box mt={3}>
-          <TripStatsView stats={stats} />
-        </Box>
-      )}
+              {inviteUrl && (
+                <Typography color="text.secondary" sx={{ wordBreak: "break-all" }}>
+                  {inviteUrl}
+                </Typography>
+              )}
 
-      <Box mt={3} display="flex" gap={2} flexWrap="wrap">
-        <Button variant="text" onClick={loadAll}>
-          Обновить данные
-        </Button>
+              <Autocomplete
+                options={userOptions}
+                loading={userLoading}
+                value={selectedUser}
+                inputValue={userQuery}
+                onInputChange={(_, v) => setUserQuery(v)}
+                onChange={(_, v) => setSelectedUser(v)}
+                getOptionLabel={(u) => `${u.username} (${u.email})`}
+                isOptionEqualToValue={(a, b) => a.id === b.id}
+                noOptionsText={userQuery.trim() ? "Ничего не найдено" : "Начни вводить никнейм"}
+                renderOption={(props, option) => (
+                  <li {...props} key={option.id}>
+                    <Box display="flex" alignItems="center" gap={1.5} sx={{ width: "100%" }}>
+                      <Avatar
+                        src={getAvatarSrc(option.avatar)}
+                        alt={option.username}
+                        sx={{ width: 28, height: 28 }}
+                        imgProps={{ referrerPolicy: "no-referrer" }}
+                      >
+                        {option.username.slice(0, 1).toUpperCase()}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography noWrap>{option.username}</Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {option.email}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Найти пользователя по никнейму"
+                    placeholder="Например: nickname"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {userLoading ? <CircularProgress size={18} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
 
-        <Button variant="outlined" onClick={() => downloadTripCsv(tripId)}>
-          Экспорт CSV
-        </Button>
+              <Button
+                variant="outlined"
+                startIcon={<PersonAddIcon />}
+                disabled={!selectedUser || addingUser}
+                onClick={onAddMemberBySearch}
+              >
+                Добавить в поездку
+              </Button>
+            </Stack>
+          </TripSection>
+        )}
 
-        <Button variant="outlined" onClick={() => downloadTripPdf(tripId)}>
-          Экспорт PDF
-        </Button>
-      </Box>
+        <TripSection
+          title="Чек-листы"
+          collapsed={collapsedSections.checklists}
+          onToggle={() => toggleSection("checklists")}
+        >
+          <ChecklistSection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
+        </TripSection>
+
+        <TripSection
+          title="План поездки"
+          collapsed={collapsedSections.itinerary}
+          onToggle={() => toggleSection("itinerary")}
+        >
+          <ItinerarySection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
+        </TripSection>
+
+        <TripSection
+          title="Расходы"
+          collapsed={collapsedSections.expenses}
+          onToggle={() => toggleSection("expenses")}
+        >
+          <ExpensesSection
+            tripId={tripId}
+            trip={trip}
+            onError={(msg) => setError(msg)}
+            onAfterChange={loadAll}
+          />
+        </TripSection>
+
+        <TripSection
+          title="Карта"
+          collapsed={collapsedSections.map}
+          onToggle={() => toggleSection("map")}
+        >
+          <TripMap expenses={expenses} />
+        </TripSection>
+
+        <TripSection
+          title="Баланс и взаиморасчёты"
+          collapsed={collapsedSections.balance}
+          onToggle={() => toggleSection("balance")}
+        >
+          <BalanceSettlementsSection
+            tripId={tripId}
+            userId={user?.id}
+            isOwner={isOwner}
+            members={trip.members}
+            balance={balance}
+            settlements={settlements}
+            onAfterChange={loadAll}
+            onError={(msg) => setError(msg)}
+          />
+        </TripSection>
+
+        {stats && (
+          <TripSection
+            title="Статистика"
+            collapsed={collapsedSections.stats}
+            onToggle={() => toggleSection("stats")}
+          >
+            <TripStatsView stats={stats} />
+          </TripSection>
+        )}
+
+        <TripSection
+          title="Действия"
+          collapsed={collapsedSections.actions}
+          onToggle={() => toggleSection("actions")}
+        >
+          <Box display="flex" gap={2} flexWrap="wrap">
+            <Button variant="text" onClick={loadAll}>
+              Обновить данные
+            </Button>
+
+            <Button variant="outlined" onClick={() => downloadTripCsv(tripId)}>
+              Экспорт CSV
+            </Button>
+
+            <Button variant="outlined" onClick={() => downloadTripPdf(tripId)}>
+              Экспорт PDF
+            </Button>
+          </Box>
+        </TripSection>
+      </Container>
+    </Box>
 
       {/* Диалог редактирования названия */}
       <Dialog open={editTitleOpen} onClose={() => setEditTitleOpen(false)} maxWidth="xs" fullWidth>
@@ -647,6 +784,6 @@ export default function TripDetailPage() {
         canDownload={!!receiptUrl}
         canDelete={!!receiptUrl}
       />
-    </Container>
+    </>
   );
 }
