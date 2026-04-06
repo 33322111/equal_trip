@@ -1,7 +1,23 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Container, TextField, Button, Typography, Box, Alert, Paper } from '@mui/material';
+import { Container, TextField, Button, Typography, Box, Alert, Paper, Stack } from '@mui/material';
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
+
+type PasswordRule = {
+  id: string;
+  label: string;
+  check: (value: string) => boolean;
+};
+
+const PASSWORD_RULES: PasswordRule[] = [
+  { id: "len", label: "Минимум 8 символов", check: (value) => value.length >= 8 },
+  { id: "upper", label: "Хотя бы 1 заглавная буква", check: (value) => /[A-Z]/.test(value) },
+  { id: "lower", label: "Хотя бы 1 строчная буква", check: (value) => /[a-z]/.test(value) },
+  { id: "digit", label: "Хотя бы 1 цифра", check: (value) => /\d/.test(value) },
+  { id: "special", label: "Хотя бы 1 спецсимвол", check: (value) => /[^\w\s]/.test(value) },
+];
 
 const RegisterPage: React.FC = () => {
   const { register } = useAuth();
@@ -13,9 +29,26 @@ const RegisterPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const passwordRuleResults = useMemo(
+    () =>
+      PASSWORD_RULES.map((rule) => ({
+        ...rule,
+        passed: rule.check(password),
+      })),
+    [password]
+  );
+
+  const isPasswordValid = passwordRuleResults.every((r) => r.passed);
+  const isPasswordMismatch = password2.length > 0 && password !== password2;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!isPasswordValid) {
+      setError('Пароль не соответствует требованиям.');
+      return;
+    }
 
     if (password !== password2) {
       setError('Пароли не совпадают');
@@ -26,7 +59,24 @@ const RegisterPage: React.FC = () => {
     try {
       await register(username, email, password);
       navigate('/trips');
-    } catch (err) {
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const details = [
+        ...(Array.isArray(data?.password) ? data.password : []),
+        ...(Array.isArray(data?.username) ? data.username : []),
+        ...(Array.isArray(data?.email) ? data.email : []),
+      ];
+
+      if (details.length > 0) {
+        setError(details.join(' '));
+        return;
+      }
+
+      if (typeof data?.detail === "string") {
+        setError(data.detail);
+        return;
+      }
+
       setError('Ошибка регистрации');
     } finally {
       setIsSubmitting(false);
@@ -72,6 +122,37 @@ const RegisterPage: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 1.5,
+                borderRadius: 2,
+                borderColor: "#dbe3ea",
+                backgroundColor: "#f8fafc",
+                mt: 1,
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Требования к паролю
+              </Typography>
+              <Stack spacing={0.75}>
+                {passwordRuleResults.map((rule) => (
+                  <Box key={rule.id} display="flex" alignItems="center" gap={1}>
+                    {rule.passed ? (
+                      <CheckCircleOutlineIcon color="success" fontSize="small" />
+                    ) : (
+                      <RadioButtonUncheckedIcon sx={{ color: "#94a3b8", fontSize: 17 }} />
+                    )}
+                    <Typography
+                      variant="body2"
+                      sx={{ color: rule.passed ? "success.main" : "text.secondary" }}
+                    >
+                      {rule.label}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Paper>
             <TextField
               label="Повторите пароль"
               type="password"
@@ -79,6 +160,8 @@ const RegisterPage: React.FC = () => {
               margin="normal"
               value={password2}
               onChange={(e) => setPassword2(e.target.value)}
+              error={isPasswordMismatch}
+              helperText={isPasswordMismatch ? "Пароли не совпадают" : " "}
               required
             />
             <Button
