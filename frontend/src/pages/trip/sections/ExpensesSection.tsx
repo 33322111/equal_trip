@@ -10,8 +10,10 @@ import {
   IconButton,
   MenuItem,
   InputAdornment,
+  useMediaQuery,
 } from "@mui/material";
 import { YMaps, Map as YandexMap, Placemark, SearchControl } from "@pbe/react-yandex-maps";
+import { useTheme } from "@mui/material/styles";
 
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -37,8 +39,8 @@ import { downloadReceipt } from "../../../api/exports";
 import ExpenseEditDialog from "../../../components/ExpenseEditDialog";
 import { TripDetail } from "../../../api/trips";
 import ReceiptDialog from "../../../components/ReceiptDialog";
+import { API_BASE_URL } from "../../../config/runtime";
 
-const API_BASE_URL = "http://localhost:8000";
 const DEFAULT_MAP_CENTER: [number, number] = [55.751244, 37.618423];
 
 type Props = {
@@ -87,6 +89,10 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [receiptTitle, setReceiptTitle] = useState<string>("");
   const [receiptExpenseId, setReceiptExpenseId] = useState<number | null>(null);
+  const theme = useTheme();
+  const isXs = useMediaQuery(theme.breakpoints.down("sm"));
+  const isSm = useMediaQuery(theme.breakpoints.between("sm", "md"));
+  const mapHeight = isXs ? 220 : isSm ? 260 : 300;
 
   const membersById = useMemo(() => {
     const map = new Map<number, { username: string; email: string }>();
@@ -269,7 +275,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
 
         {/* Форма добавления */}
         <Box component="form" onSubmit={onAddExpense} sx={{ mb: 2 }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+          <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
             <TextField
               label="Название"
               value={formTitle}
@@ -291,7 +297,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
 
             <Autocomplete
               options={currencies}
-              sx={{ minWidth: 320 }}
+              sx={{ width: { xs: "100%", sm: 260, lg: 300 } }}
               autoHighlight
               value={currencies.find((c) => c.code === formCurrency) ?? null}
               onChange={(_, newValue) => setFormCurrency(newValue?.code ?? "RUB")}
@@ -310,7 +316,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                 const v = e.target.value;
                 setFormCategoryId(v === "" ? "" : Number(v));
               }}
-              sx={{ minWidth: 220 }}
+              sx={{ width: { xs: "100%", sm: 220 } }}
             >
               <MenuItem value="">Без категории</MenuItem>
               {categories.map((c) => (
@@ -320,7 +326,12 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
               ))}
             </TextField>
 
-            <Button type="submit" variant="contained" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={isSubmitting}
+              sx={{ width: { xs: "100%", lg: "auto" } }}
+            >
               Добавить
             </Button>
           </Stack>
@@ -337,7 +348,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
               <YandexMap
                 state={{ center: mapCenter, zoom: 10 }}
                 width="100%"
-                height={260}
+                height={mapHeight}
                 onClick={(event: any) => {
                   const coords = event.get("coords") as number[] | undefined;
                   if (!coords || coords.length < 2) return;
@@ -395,6 +406,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                   setFormLng(null);
                   setMapCenter(DEFAULT_MAP_CENTER);
                 }}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
                 Очистить
               </Button>
@@ -411,13 +423,19 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
 
             return (
               <Paper key={ex.id} variant="outlined" sx={{ p: 1.5 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+                <Box
+                  display="flex"
+                  flexDirection={{ xs: "column", sm: "row" }}
+                  justifyContent="space-between"
+                  alignItems={{ xs: "flex-start", sm: "center" }}
+                  gap={1.5}
+                >
                   <Box sx={{ minWidth: 0 }}>
-                    <Typography fontWeight={600} noWrap>
+                    <Typography fontWeight={600} sx={{ wordBreak: "break-word" }}>
                       {ex.title}
                     </Typography>
 
-                    <Typography variant="body2" color="text.secondary" noWrap>
+                    <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
                       {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
                     </Typography>
 
@@ -435,8 +453,8 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                     </Typography>
                   </Box>
 
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Typography fontWeight={700} sx={{ whiteSpace: "nowrap" }}>
+                  <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" width={{ xs: "100%", sm: "auto" }}>
+                    <Typography fontWeight={700} sx={{ whiteSpace: "nowrap", mr: { xs: "auto", sm: 0 } }}>
                       {ex.amount} {ex.currency}
                       {ex.amount_rub ? ` (≈ ${ex.amount_rub} RUB)` : ""}
                     </Typography>

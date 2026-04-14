@@ -24,8 +24,7 @@ import {
   deleteSettlement,
 } from "../../../api/settlements";
 import { downloadReceipt } from "../../../api/exports";
-
-const API_BASE_URL = "http://localhost:8000";
+import { API_BASE_URL } from "../../../config/runtime";
 
 type MemberUser = { id: number; username: string; email: string };
 type TripMember = { id: number; role: string; user: MemberUser };
@@ -181,8 +180,14 @@ export default function BalanceSettlementsSection({
 
               return (
                 <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
-                  <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
-                    <Typography sx={{ minWidth: 0 }}>
+                  <Box
+                    display="flex"
+                    flexDirection={{ xs: "column", sm: "row" }}
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    justifyContent="space-between"
+                    gap={1.5}
+                  >
+                    <Typography sx={{ minWidth: 0, wordBreak: "break-word" }}>
                       <b>{from?.username ?? `User#${t.from_user}`}</b> →{" "}
                       <b>{to?.username ?? `User#${t.to_user}`}</b>: <b>{t.amount} RUB</b>
                     </Typography>
@@ -193,6 +198,7 @@ export default function BalanceSettlementsSection({
                         variant="outlined"
                         startIcon={<PaidIcon />}
                         onClick={() => openPayDialogFromTransfer(t.from_user, t.to_user, t.amount)}
+                        sx={{ width: { xs: "100%", sm: "auto" } }}
                       >
                         Я оплатил
                       </Button>
@@ -221,9 +227,15 @@ export default function BalanceSettlementsSection({
 
               return (
                 <Paper key={s.id} variant="outlined" sx={{ p: 1.5 }}>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+                  <Box
+                    display="flex"
+                    flexDirection={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    gap={1.5}
+                  >
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography>
+                      <Typography sx={{ wordBreak: "break-word" }}>
                         <b>{from?.username ?? `User#${s.from_user}`}</b> →{" "}
                         <b>{to?.username ?? `User#${s.to_user}`}</b>:{" "}
                         <b>
@@ -240,16 +252,28 @@ export default function BalanceSettlementsSection({
                       </Typography>
                     </Box>
 
-                    <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                    <Box
+                      display="flex"
+                      alignItems="center"
+                      gap={1}
+                      flexWrap="wrap"
+                      width={{ xs: "100%", sm: "auto" }}
+                    >
                       {s.proof ? (
                         <>
-                          <Button size="small" variant="text" onClick={() => window.open(toAbsUrl(s.proof!), "_blank")}>
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => window.open(toAbsUrl(s.proof!), "_blank")}
+                            sx={{ width: { xs: "100%", sm: "auto" } }}
+                          >
                             Открыть
                           </Button>
                           <Button
                             size="small"
                             variant="text"
                             onClick={() => downloadReceipt(toAbsUrl(s.proof!), `payment_proof_${s.id}`)}
+                            sx={{ width: { xs: "100%", sm: "auto" } }}
                           >
                             Скачать
                           </Button>
@@ -262,13 +286,20 @@ export default function BalanceSettlementsSection({
                           variant="contained"
                           startIcon={<CheckCircleIcon />}
                           onClick={() => openConfirmDialog(s.id)}
+                          sx={{ width: { xs: "100%", sm: "auto" } }}
                         >
                           Подтвердить
                         </Button>
                       ) : null}
 
                       {(s.from_user === userId || isOwner) ? (
-                        <Button size="small" color="error" variant="outlined" onClick={() => onDeleteSettlement(s.id)}>
+                        <Button
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          onClick={() => onDeleteSettlement(s.id)}
+                          sx={{ width: { xs: "100%", sm: "auto" } }}
+                        >
                           Удалить
                         </Button>
                       ) : null}

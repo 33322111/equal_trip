@@ -16,10 +16,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // При первом рендере пробуем подтянуть текущего пользователя по токену
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
+    const accessToken = localStorage.getItem('accessToken');
+    const refreshToken = localStorage.getItem('refreshToken');
+
+    if (!accessToken && !refreshToken) {
       setIsLoading(false);
       return;
     }
@@ -43,7 +44,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleRegister = async (username: string, email: string, password: string) => {
     await apiRegister({ username, email, password });
-    // после регистрации можно сразу логиниться
     await handleLogin(username, password);
   };
 

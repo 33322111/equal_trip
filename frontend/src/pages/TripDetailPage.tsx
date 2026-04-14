@@ -64,8 +64,8 @@ import { listSettlements, Settlement } from "../api/settlements";
 import ReceiptDialog from "../components/ReceiptDialog";
 
 import { searchUsers } from "../api/users";
+import { API_BASE_URL } from "../config/runtime";
 
-const API_BASE_URL = "http://localhost:8000";
 const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
 
 type UserShort = {
@@ -109,14 +109,20 @@ function TripSection({
         boxShadow: "0 14px 34px rgba(15, 23, 42, 0.06)",
       }}
     >
-      <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+      <Box
+        display="flex"
+        flexDirection={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "stretch", sm: "center" }}
+        gap={1}
+      >
         <Typography variant="h6">{title}</Typography>
         <Button
           variant="text"
           size="small"
           onClick={onToggle}
           endIcon={collapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-          sx={{ color: "#475569", minWidth: 0 }}
+          sx={{ color: "#475569", minWidth: 0, alignSelf: { xs: "flex-start", sm: "auto" } }}
         >
           {collapsed ? "Развернуть" : "Свернуть"}
         </Button>
@@ -453,7 +459,25 @@ export default function TripDetailPage() {
     }
   };
 
-  if (!trip) return <div>Загрузка...</div>;
+  if (!trip) {
+    return (
+      <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
+        <Container>
+          <Paper
+            sx={{
+              p: { xs: 2, md: 3 },
+              borderRadius: 4,
+              border: "1px solid #d6dee6",
+              background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+              boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
+            }}
+          >
+            <Typography color="text.secondary">Загрузка...</Typography>
+          </Paper>
+        </Container>
+      </Box>
+    );
+  }
 
   return (
     <>
@@ -469,9 +493,20 @@ export default function TripDetailPage() {
             boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
           }}
         >
-          <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
+          <Box
+            display="flex"
+            flexDirection={{ xs: "column", sm: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "stretch", sm: "flex-start" }}
+            gap={2}
+          >
             <Box sx={{ minWidth: 0 }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                alignItems={{ xs: "flex-start", sm: "center" }}
+                sx={{ minWidth: 0 }}
+              >
                 <Typography variant="h4" sx={{ wordBreak: "break-word", color: "#0f172a" }}>
                   {trip.title}
                 </Typography>
@@ -491,11 +526,22 @@ export default function TripDetailPage() {
             </Box>
 
             {isOwner ? (
-              <Button variant="outlined" size="small" onClick={openEditDates}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={openEditDates}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
+              >
                 Редактировать даты
               </Button>
             ) : (
-              <Button variant="outlined" color="error" size="small" onClick={onLeaveTrip}>
+              <Button
+                variant="outlined"
+                color="error"
+                size="small"
+                onClick={onLeaveTrip}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
+              >
                 Покинуть поездку
               </Button>
             )}
@@ -521,15 +567,16 @@ export default function TripDetailPage() {
                 <Box
                   key={m.id}
                   display="flex"
+                  flexDirection={{ xs: "column", sm: "row" }}
                   justifyContent="space-between"
-                  alignItems="center"
+                  alignItems={{ xs: "flex-start", sm: "center" }}
                   py={0.9}
                   gap={2}
                 >
                   <Box display="flex" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
                     <Avatar src={avatarSrc} sx={{ width: 36, height: 36 }} />
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography noWrap>
+                      <Typography sx={{ wordBreak: "break-word" }}>
                         {m.user.username} ({m.user.email})
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -544,6 +591,7 @@ export default function TripDetailPage() {
                       variant="outlined"
                       size="small"
                       onClick={() => onRemoveMember(m.id, m.user.username)}
+                      sx={{ width: { xs: "100%", sm: "auto" } }}
                     >
                       Удалить
                     </Button>
@@ -593,8 +641,8 @@ export default function TripDetailPage() {
                         {option.username.slice(0, 1).toUpperCase()}
                       </Avatar>
                       <Box sx={{ minWidth: 0 }}>
-                        <Typography noWrap>{option.username}</Typography>
-                        <Typography variant="body2" color="text.secondary" noWrap>
+                        <Typography sx={{ wordBreak: "break-word" }}>{option.username}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
                           {option.email}
                         </Typography>
                       </Box>
@@ -624,6 +672,7 @@ export default function TripDetailPage() {
                 startIcon={<PersonAddIcon />}
                 disabled={!selectedUser || addingUser}
                 onClick={onAddMemberBySearch}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
                 Добавить в поездку
               </Button>
@@ -701,15 +750,15 @@ export default function TripDetailPage() {
           onToggle={() => toggleSection("actions")}
         >
           <Box display="flex" gap={2} flexWrap="wrap">
-            <Button variant="text" onClick={loadAll}>
+            <Button variant="text" onClick={loadAll} sx={{ width: { xs: "100%", sm: "auto" } }}>
               Обновить данные
             </Button>
 
-            <Button variant="outlined" onClick={() => downloadTripCsv(tripId)}>
+            <Button variant="outlined" onClick={() => downloadTripCsv(tripId)} sx={{ width: { xs: "100%", sm: "auto" } }}>
               Экспорт CSV
             </Button>
 
-            <Button variant="outlined" onClick={() => downloadTripPdf(tripId)}>
+            <Button variant="outlined" onClick={() => downloadTripPdf(tripId)} sx={{ width: { xs: "100%", sm: "auto" } }}>
               Экспорт PDF
             </Button>
           </Box>

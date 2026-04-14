@@ -5,6 +5,7 @@ import {
   Toolbar,
   Typography,
   Box,
+  Button,
   IconButton,
   Avatar,
   Menu,
@@ -20,8 +21,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 
 import { useAuth } from "../context/AuthContext";
 import { getProfile } from "../api/profile";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+import { API_BASE_URL } from "../config/runtime";
 
 export default function Header() {
   const { isAuthenticated, logout, user } = useAuth();
@@ -69,29 +69,43 @@ export default function Header() {
 
   return (
     <AppBar position="static">
-      <Toolbar>
+      <Toolbar
+        sx={{
+          flexWrap: { xs: "wrap", sm: "nowrap" },
+          gap: { xs: 1, sm: 0 },
+          py: { xs: 0.75, sm: 0 },
+        }}
+      >
         <Typography
           variant="h6"
           component={Link}
           to="/"
-          sx={{ flexGrow: 1, textDecoration: "none", color: "inherit" }}
+          sx={{
+            flexGrow: 1,
+            textDecoration: "none",
+            color: "inherit",
+            width: { xs: "100%", sm: "auto" },
+            fontSize: { xs: "1.1rem", sm: "1.25rem" },
+            lineHeight: 1.2,
+          }}
         >
           EqualTrip
         </Typography>
 
-        <Box>
+        <Box sx={{ width: { xs: "100%", sm: "auto" }, display: "flex", justifyContent: "flex-end" }}>
           {!isAuthenticated ? (
-            <Box sx={{ display: "flex", gap: 1 }}>
-              <Typography
+            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <Button
                 component={Link}
                 to="/login"
-                style={{ color: "inherit", textDecoration: "none", marginRight: 12 }}
+                color="inherit"
+                size="small"
               >
                 Войти
-              </Typography>
-              <Typography component={Link} to="/register" style={{ color: "inherit", textDecoration: "none" }}>
+              </Button>
+              <Button component={Link} to="/register" color="inherit" size="small">
                 Регистрация
-              </Typography>
+              </Button>
             </Box>
           ) : (
             <>

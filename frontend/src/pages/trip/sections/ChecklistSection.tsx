@@ -224,13 +224,19 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
               key={c.id}
               variant={c.id === activeChecklistId ? "contained" : "outlined"}
               onClick={() => setActiveChecklistId(c.id)}
+              sx={{ width: { xs: "100%", sm: "auto" } }}
             >
               {c.title}
             </Button>
           ))}
 
           {activeChecklistId ? (
-            <Button color="error" variant="text" onClick={() => onDeleteChecklist(activeChecklistId)}>
+            <Button
+              color="error"
+              variant="text"
+              onClick={() => onDeleteChecklist(activeChecklistId)}
+              sx={{ width: { xs: "100%", sm: "auto" } }}
+            >
               Удалить выбранный
             </Button>
           ) : null}
@@ -242,7 +248,7 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
           <>
             {/* форма добавления задачи */}
             <Box component="form" onSubmit={onAddItem} sx={{ mb: 2 }}>
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
                 <TextField
                   label="Задача"
                   value={itemTitle}
@@ -251,7 +257,7 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
                 />
 
                 <Autocomplete
-                  sx={{ minWidth: 240 }}
+                  sx={{ width: { xs: "100%", sm: 260 } }}
                   options={members.map((m) => m.user)}
                   getOptionLabel={(u) => `${u.username} (${u.email})`}
                   value={
@@ -267,10 +273,10 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
                   value={itemDueDate}
                   onChange={(e) => setItemDueDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  sx={{ minWidth: 170 }}
+                  sx={{ width: { xs: "100%", sm: 180 } }}
                 />
 
-                <Button type="submit" variant="contained">
+                <Button type="submit" variant="contained" sx={{ width: { xs: "100%", lg: "auto" } }}>
                   Добавить
                 </Button>
               </Stack>
@@ -280,21 +286,27 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
             <Box display="flex" flexDirection="column" gap={1}>
               {checklistItems.map((it) => (
                 <Paper key={it.id} variant="outlined" sx={{ p: 1.5 }}>
-                  <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
+                  <Box
+                    display="flex"
+                    flexDirection={{ xs: "column", sm: "row" }}
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    justifyContent="space-between"
+                    gap={1.5}
+                  >
                     <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
                       <Checkbox checked={it.is_done} onChange={() => onToggleDone(it)} />
                       <Box sx={{ minWidth: 0 }}>
-                        <Typography fontWeight={600} noWrap>
+                        <Typography fontWeight={600} sx={{ wordBreak: "break-word" }}>
                           {it.title}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" noWrap>
+                        <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
                           {it.assignee ? `Ответственный: ${it.assignee.username}` : "Ответственный: —"}
                           {it.due_date ? ` • Срок: ${it.due_date}` : ""}
                         </Typography>
                       </Box>
                     </Box>
 
-                    <Box display="flex" alignItems="center" gap={1}>
+                    <Box display="flex" alignItems="center" gap={1} sx={{ alignSelf: { xs: "flex-end", sm: "auto" } }}>
                       <IconButton size="small" onClick={() => onOpenComments(it)} aria-label="comments">
                         <ChatBubbleOutlineIcon fontSize="small" />
                       </IconButton>

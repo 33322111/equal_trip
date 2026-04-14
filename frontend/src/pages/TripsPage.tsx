@@ -42,14 +42,20 @@ function PageSection({
         boxShadow: "0 14px 34px rgba(15, 23, 42, 0.06)",
       }}
     >
-      <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+      <Box
+        display="flex"
+        flexDirection={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "stretch", sm: "center" }}
+        gap={1}
+      >
         <Typography variant="h6">{title}</Typography>
         <Button
           variant="text"
           size="small"
           onClick={onToggle}
           endIcon={collapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-          sx={{ color: "#475569", minWidth: 0 }}
+          sx={{ color: "#475569", minWidth: 0, alignSelf: { xs: "flex-start", sm: "auto" } }}
         >
           {collapsed ? "Развернуть" : "Свернуть"}
         </Button>
@@ -268,7 +274,7 @@ export default function TripsPage() {
             label="Сортировка"
             value={sortOrder}
             onChange={(e) => onChangeSort(e.target.value as SortOrder)}
-            sx={{ minWidth: 220 }}
+            sx={{ width: { xs: "100%", sm: 260 } }}
           >
             <MenuItem value="asc">От старых к новым</MenuItem>
             <MenuItem value="desc">От новых к старым</MenuItem>
@@ -278,7 +284,7 @@ export default function TripsPage() {
         <Box display="flex" flexDirection="column" gap={1.25}>
           {trips.map((t) => (
             <Paper key={t.id} variant="outlined" sx={{ p: 2.25, backgroundColor: "#ffffff" }}>
-              <Typography variant="h6" sx={{ mb: 0.5 }}>
+              <Typography variant="h6" sx={{ mb: 0.5, wordBreak: "break-word" }}>
                 <Link to={`/trips/${t.id}`}>{t.title}</Link>
               </Typography>
 
@@ -311,7 +317,12 @@ export default function TripsPage() {
             boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
           }}
         >
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems={{ xs: "flex-start", sm: "center" }}
+            mb={0.5}
+          >
             <Typography variant="h4" sx={{ color: "#0f172a" }}>
               Мои поездки
             </Typography>
@@ -338,6 +349,7 @@ export default function TripsPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               fullWidth
+              sx={{ flex: "1 1 320px" }}
             />
 
             <TextField
@@ -346,7 +358,7 @@ export default function TripsPage() {
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 200 }}
+              sx={{ flex: { xs: "1 1 100%", sm: "1 1 200px" } }}
             />
 
             <TextField
@@ -355,10 +367,15 @@ export default function TripsPage() {
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 200 }}
+              sx={{ flex: { xs: "1 1 100%", sm: "1 1 200px" } }}
             />
 
-            <Button variant="contained" onClick={onCreate} disabled={isCreating}>
+            <Button
+              variant="contained"
+              onClick={onCreate}
+              disabled={isCreating}
+              sx={{ width: { xs: "100%", sm: "auto" } }}
+            >
               Создать
             </Button>
           </Box>

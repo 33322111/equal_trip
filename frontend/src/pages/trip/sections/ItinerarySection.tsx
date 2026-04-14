@@ -63,14 +63,13 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     return m;
   }, [days]);
 
-  // точки на календаре только если есть активности
-const daysWithItems = useMemo(() => {
-  const s = new Set<string>();
-  for (const d of days) {
-    if ((d as any).items_count > 0) s.add(d.date);
-  }
-  return s;
-}, [days]);
+  const daysWithItems = useMemo(() => {
+    const s = new Set<string>();
+    for (const d of days) {
+      if ((d as any).items_count > 0) s.add(d.date);
+    }
+    return s;
+  }, [days]);
 
   const reloadDays = async () => {
     const ds = await listDays(tripId);
@@ -195,15 +194,20 @@ const daysWithItems = useMemo(() => {
 
       <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
         <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
-          <Box sx={{ minWidth: 320 }}>
-            <DateCalendar value={selectedDate} onChange={onPickDate} renderDay={renderDay} />
+          <Box sx={{ width: { xs: "100%", md: 340 }, maxWidth: 340, mx: { xs: "auto", md: 0 } }}>
+            <DateCalendar
+              value={selectedDate}
+              onChange={onPickDate}
+              renderDay={renderDay}
+              sx={{ width: "100%", maxWidth: "100%" }}
+            />
 
             {selectedDate && !dayByIso.has(iso(selectedDate)) ? (
               <Box sx={{ mt: 2 }}>
                 <Alert severity="info" sx={{ mb: 1 }}>
                   Для этой даты ещё нет дня в планировщике.
                 </Alert>
-                <Button variant="contained" onClick={createDayForSelected}>
+                <Button variant="contained" onClick={createDayForSelected} sx={{ width: { xs: "100%", sm: "auto" } }}>
                   Создать день
                 </Button>
               </Box>
@@ -211,7 +215,13 @@ const daysWithItems = useMemo(() => {
           </Box>
 
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              justifyContent="space-between"
+              alignItems={{ xs: "flex-start", sm: "center" }}
+              sx={{ mb: 1 }}
+              gap={1}
+            >
               <Typography variant="subtitle1" fontWeight={700} sx={{ textTransform: "capitalize" }}>
                 {selectedDate
                   ? selectedDate.toLocaleDateString("ru-RU", {
@@ -223,7 +233,7 @@ const daysWithItems = useMemo(() => {
               </Typography>
 
               {activeDayId ? (
-                <Button color="error" variant="text" onClick={onDeleteDay}>
+                <Button color="error" variant="text" onClick={onDeleteDay} sx={{ width: { xs: "100%", sm: "auto" } }}>
                   Удалить день
                 </Button>
               ) : null}
@@ -236,7 +246,7 @@ const daysWithItems = useMemo(() => {
             ) : (
               <>
                 <Box component="form" onSubmit={onAddItem} sx={{ mb: 2 }}>
-                  <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                  <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
                     <TextField
                       label="Активность"
                       value={itTitle}
@@ -248,7 +258,7 @@ const daysWithItems = useMemo(() => {
                     <TextField label="До" type="time" value={itTo} onChange={(e) => setItTo(e.target.value)} />
 
                     <Autocomplete
-                      sx={{ minWidth: 240 }}
+                      sx={{ width: { xs: "100%", sm: 260 } }}
                       options={members.map((m) => m.user)}
                       getOptionLabel={(u) => `${u.username} (${u.email})`}
                       value={itAssigneeId ? members.map((m) => m.user).find((u) => u.id === itAssigneeId) ?? null : null}
@@ -256,7 +266,7 @@ const daysWithItems = useMemo(() => {
                       renderInput={(params) => <TextField {...params} label="Ответственный" />}
                     />
 
-                    <Button type="submit" variant="contained">
+                    <Button type="submit" variant="contained" sx={{ width: { xs: "100%", lg: "auto" } }}>
                       Добавить
                     </Button>
                   </Stack>
@@ -281,11 +291,17 @@ const daysWithItems = useMemo(() => {
 
                     return (
                       <Paper key={it.id} variant="outlined" sx={{ p: 1.5 }}>
-                        <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
+                        <Box
+                          display="flex"
+                          flexDirection={{ xs: "column", sm: "row" }}
+                          justifyContent="space-between"
+                          alignItems={{ xs: "flex-start", sm: "flex-start" }}
+                          gap={1.5}
+                        >
                           <Box sx={{ minWidth: 0 }}>
-                            <Box display="flex" alignItems="center" gap={1}>
+                            <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
                               <Checkbox checked={it.is_done} onChange={() => onToggleDone(it)} />
-                              <Typography fontWeight={700} noWrap>
+                              <Typography fontWeight={700} sx={{ wordBreak: "break-word" }}>
                                 {it.title}
                               </Typography>
                             </Box>
@@ -302,7 +318,7 @@ const daysWithItems = useMemo(() => {
                             ) : null}
                           </Box>
 
-                          <Box display="flex" gap={1}>
+                          <Box display="flex" gap={1} sx={{ alignSelf: { xs: "flex-end", sm: "flex-start" } }}>
                             <IconButton size="small" disabled aria-label="comments-disabled">
                               <ChatBubbleOutlineIcon fontSize="small" />
                             </IconButton>

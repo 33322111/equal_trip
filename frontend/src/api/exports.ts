@@ -1,4 +1,5 @@
 import { api } from "./http";
+import { API_BASE_URL } from "../config/runtime";
 
 export async function downloadTripCsv(tripId: number) {
   const res = await api.get(`/trips/${tripId}/export/csv/`, {
@@ -44,8 +45,7 @@ export async function downloadTripPdf(tripId: number) {
 }
 
 export async function downloadReceipt(url: string, filename: string) {
-  // url вида /media/receipts/xxx.jpg  -> делаем абсолютный
-  const abs = url.startsWith("http") ? url : `http://localhost:8000${url}`;
+  const abs = url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
 
   const res = await api.get(abs, { responseType: "blob" });
 

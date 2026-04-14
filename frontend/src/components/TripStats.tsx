@@ -1,17 +1,16 @@
 import React from "react";
-import { Paper, Typography } from "@mui/material";
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis
-} from "recharts";
+import { Paper, Typography, useMediaQuery } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from "recharts";
 import { TripStats } from "../api/stats";
 import { useMemo } from "react";
-
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#9C27B0"];
 
 export default function TripStatsView({ stats }: { stats: TripStats }) {
-    const pieData = useMemo(
+  const theme = useTheme();
+  const isXs = useMediaQuery(theme.breakpoints.down("sm"));
+  const pieData = useMemo(
     () =>
       stats.by_category
         .map((x) => ({
@@ -47,7 +46,7 @@ export default function TripStatsView({ stats }: { stats: TripStats }) {
             data={pieData}
             dataKey="amount"
             nameKey="category"
-            label
+            label={!isXs}
           >
             {pieData.map((_, i) => (
               <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -62,8 +61,14 @@ export default function TripStatsView({ stats }: { stats: TripStats }) {
       </Typography>
 
       <ResponsiveContainer width="100%" height={250}>
-        <BarChart data={stats.by_user}>
-          <XAxis dataKey="username" />
+        <BarChart data={barData} margin={{ top: 8, right: 8, left: 0, bottom: isXs ? 24 : 8 }}>
+          <XAxis
+            dataKey="username"
+            interval={0}
+            angle={isXs ? -25 : 0}
+            textAnchor={isXs ? "end" : "middle"}
+            height={isXs ? 56 : 32}
+          />
           <YAxis />
           <Tooltip />
           <Bar dataKey="amount" fill="#1976d2" />

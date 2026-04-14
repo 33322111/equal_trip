@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { YMaps, Map, Placemark } from "@pbe/react-yandex-maps";
-import { Box, Chip, Divider, Paper, Stack, Typography } from "@mui/material";
+import { Box, Chip, Divider, Paper, Stack, Typography, useMediaQuery } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { Expense } from "../api/expenses";
 
 interface Props {
@@ -23,6 +24,10 @@ export default function TripMap({ expenses }: Props) {
   const points = useMemo(() => expenses.filter((e) => e.lat && e.lng), [expenses]);
   const [selectedExpenseId, setSelectedExpenseId] = useState<number | null>(points[0]?.id ?? null);
   const selectedExpense = points.find((expense) => expense.id === selectedExpenseId) ?? points[0] ?? null;
+  const theme = useTheme();
+  const isXs = useMediaQuery(theme.breakpoints.down("sm"));
+  const isSm = useMediaQuery(theme.breakpoints.between("sm", "md"));
+  const mapHeight = isXs ? 260 : isSm ? 320 : 400;
 
   const center: [number, number] =
     points.length > 0
@@ -38,7 +43,7 @@ export default function TripMap({ expenses }: Props) {
       {!points.length ? <Typography color="text.secondary">Расходы с координатами пока не добавлены.</Typography> : null}
 
       <YMaps query={{ apikey: import.meta.env.VITE_YMAPS_API_KEY }}>
-        <Map defaultState={{ center, zoom: 10 }} width="100%" height={400}>
+        <Map defaultState={{ center, zoom: 10 }} width="100%" height={mapHeight}>
           {points.map((e) => (
             <Placemark
               key={e.id}
@@ -72,12 +77,22 @@ export default function TripMap({ expenses }: Props) {
           }}
         >
           <Stack spacing={1.5}>
-            <Box display="flex" justifyContent="space-between" gap={2} alignItems="flex-start">
+            <Box
+              display="flex"
+              flexDirection={{ xs: "column", sm: "row" }}
+              justifyContent="space-between"
+              gap={1.5}
+              alignItems={{ xs: "flex-start", sm: "flex-start" }}
+            >
               <Box>
                 <Typography variant="h6">{selectedExpense.title}</Typography>
                 <Typography color="text.secondary">{selectedExpense.category?.name ?? "Без категории"}</Typography>
               </Box>
-              <Chip color="primary" label={`${selectedExpense.amount} ${selectedExpense.currency}`} sx={{ fontWeight: 600 }} />
+              <Chip
+                color="primary"
+                label={`${selectedExpense.amount} ${selectedExpense.currency}`}
+                sx={{ fontWeight: 600 }}
+              />
             </Box>
             <Divider />
             <Typography>Автор: {selectedExpense.created_by.username}</Typography>

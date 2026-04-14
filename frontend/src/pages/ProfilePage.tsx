@@ -10,8 +10,7 @@ import {
   Paper,
 } from "@mui/material";
 import { getProfile, updateProfile, Profile } from "../api/profile";
-
-const API_BASE_URL = "http://localhost:8000";
+import { API_BASE_URL } from "../config/runtime";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -100,7 +99,24 @@ export default function ProfilePage() {
     }
   };
 
-  if (!profile) return <div>Загрузка...</div>;
+  if (!profile) {
+    return (
+      <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 4, md: 6 } }}>
+        <Container maxWidth="sm">
+          <Paper
+            sx={{
+              p: { xs: 2.5, md: 4 },
+              borderRadius: 4,
+              border: "1px solid #d6dee6",
+              boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
+            }}
+          >
+            <Typography color="text.secondary">Загрузка...</Typography>
+          </Paper>
+        </Container>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 4, md: 6 } }}>
@@ -122,11 +138,17 @@ export default function ProfilePage() {
           )}
 
           <Box component="form" onSubmit={onSubmit}>
-            <Box display="flex" alignItems="center" gap={2} mb={3}>
+            <Box
+              display="flex"
+              flexDirection={{ xs: "column", sm: "row" }}
+              alignItems={{ xs: "flex-start", sm: "center" }}
+              gap={2}
+              mb={3}
+            >
               <Avatar src={avatarSrc} sx={{ width: 80, height: 80 }} />
 
-              <Box display="flex" flexDirection="column" gap={1}>
-                <Button variant="outlined" component="label">
+              <Box display="flex" flexDirection="column" gap={1} width={{ xs: "100%", sm: "auto" }}>
+                <Button variant="outlined" component="label" sx={{ width: { xs: "100%", sm: "auto" } }}>
                   Загрузить аватар
                   <input
                     ref={fileInputRef}
@@ -138,7 +160,12 @@ export default function ProfilePage() {
                 </Button>
 
                 {avatarFile ? (
-                  <Button variant="outlined" color="error" onClick={() => onPickAvatar(null)}>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={() => onPickAvatar(null)}
+                    sx={{ width: { xs: "100%", sm: "auto" } }}
+                  >
                     Сбросить выбор
                   </Button>
                 ) : null}

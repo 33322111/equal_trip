@@ -47,7 +47,7 @@ export default function ReceiptDialog({
         )}
       </DialogContent>
 
-      <DialogActions>
+      <DialogActions sx={{ flexDirection: { xs: "column", sm: "row" }, gap: 1, alignItems: "stretch" }}>
         {url ? <Button onClick={onDownload}>Скачать</Button> : null}
 
         {url && onDelete ? (
