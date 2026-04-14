@@ -17,7 +17,7 @@ export type DayPlanItem = {
   is_done: boolean;
   lat?: string | null;
   lng?: string | null;
-  comments?: { id: number; user: { id: number; username: string }; text: string; created_at: string }[];
+  comments?: { id: number; user: { id: number; username: string; email?: string } | null; text: string; created_at: string }[];
 };
 
 export async function listDays(tripId: number): Promise<DayPlan[]> {
@@ -85,4 +85,24 @@ export async function addDayItemComment(
 ) {
   const res = await api.post(`/trips/${tripId}/days/${dayId}/items/${itemId}/comments/`, { text });
   return res.data;
+}
+
+export async function patchDayItemComment(
+  tripId: number,
+  dayId: number,
+  itemId: number,
+  commentId: number,
+  text: string
+) {
+  const res = await api.patch(`/trips/${tripId}/days/${dayId}/items/${itemId}/comments/${commentId}/`, { text });
+  return res.data;
+}
+
+export async function deleteDayItemComment(
+  tripId: number,
+  dayId: number,
+  itemId: number,
+  commentId: number
+) {
+  await api.delete(`/trips/${tripId}/days/${dayId}/items/${itemId}/comments/${commentId}/`);
 }

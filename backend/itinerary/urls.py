@@ -17,4 +17,8 @@ urlpatterns = [
         "trips/<int:trip_id>/days/<int:day_id>/items/<int:pk>/comments/",
         TripDayPlanItemViewSet.as_view({"post": "comments"}),
     ),
+    path(
+        "trips/<int:trip_id>/days/<int:day_id>/items/<int:pk>/comments/<int:comment_id>/",
+        TripDayPlanItemViewSet.as_view({"patch": "comment_detail", "delete": "comment_detail"}),
+    ),
 ]

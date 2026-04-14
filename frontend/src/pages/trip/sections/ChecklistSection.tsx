@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import Autocomplete from "@mui/material/Autocomplete";
 
@@ -28,9 +29,12 @@ import {
   patchChecklistItem,
   deleteChecklistItem,
   addChecklistComment,
+  patchChecklistComment,
+  deleteChecklistComment,
   Checklist,
   ChecklistItem,
 } from "../../../api/checklists";
+import { useAuth } from "../../../context/AuthContext";
 
 type MemberUser = { id: number; username: string; email: string };
 
@@ -41,6 +45,7 @@ type Props = {
 };
 
 export default function ChecklistSection({ tripId, members, onError }: Props) {
+  const { user } = useAuth();
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [activeChecklistId, setActiveChecklistId] = useState<number | null>(null);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
@@ -57,6 +62,8 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentItem, setCommentItem] = useState<ChecklistItem | null>(null);
   const [commentText, setCommentText] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
 
   const reloadChecklists = async () => {
     const cls = await listChecklists(tripId);
@@ -164,9 +171,18 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     }
   };
 
+  const refreshCommentItem = async (checklistId: number, itemId: number) => {
+    const items = await listChecklistItems(tripId, checklistId);
+    setChecklistItems(items);
+    const updated = items.find((x) => x.id === itemId) ?? null;
+    setCommentItem(updated);
+  };
+
   const onOpenComments = (it: ChecklistItem) => {
     setCommentItem(it);
     setCommentText("");
+    setEditingCommentId(null);
+    setEditingCommentText("");
     setCommentOpen(true);
   };
 
@@ -174,6 +190,8 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     setCommentOpen(false);
     setCommentItem(null);
     setCommentText("");
+    setEditingCommentId(null);
+    setEditingCommentText("");
   };
 
   const onSendComment = async () => {
@@ -184,16 +202,54 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     try {
       await addChecklistComment(tripId, activeChecklistId, commentItem.id, text);
       setCommentText("");
-      await reloadItems(activeChecklistId);
-
-      // обновим commentItem, чтобы новые комментарии сразу были видны
-      const updated = (await listChecklistItems(tripId, activeChecklistId)).find(
-        (x) => x.id === commentItem.id
-      );
-      if (updated) setCommentItem(updated);
+      await refreshCommentItem(activeChecklistId, commentItem.id);
     } catch {
       onError("Не удалось добавить комментарий.");
     }
+  };
+
+  const onStartEditComment = (commentId: number, text: string) => {
+    setEditingCommentId(commentId);
+    setEditingCommentText(text);
+  };
+
+  const onCancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentText("");
+  };
+
+  const onSaveCommentEdit = async () => {
+    if (!activeChecklistId || !commentItem || !editingCommentId) return;
+    const text = editingCommentText.trim();
+    if (!text) {
+      onError("Комментарий не может быть пустым.");
+      return;
+    }
+
+    try {
+      await patchChecklistComment(tripId, activeChecklistId, commentItem.id, editingCommentId, text);
+      onCancelEditComment();
+      await refreshCommentItem(activeChecklistId, commentItem.id);
+    } catch {
+      onError("Не удалось обновить комментарий.");
+    }
+  };
+
+  const onDeleteComment = async (commentId: number) => {
+    if (!activeChecklistId || !commentItem) return;
+    if (!window.confirm("Удалить комментарий?")) return;
+
+    try {
+      await deleteChecklistComment(tripId, activeChecklistId, commentItem.id, commentId);
+      if (editingCommentId === commentId) onCancelEditComment();
+      await refreshCommentItem(activeChecklistId, commentItem.id);
+    } catch {
+      onError("Не удалось удалить комментарий.");
+    }
+  };
+
+  const canManageComment = (comment: NonNullable<ChecklistItem["comments"]>[number]) => {
+    return comment.user?.id === user?.id;
   };
 
   return (
@@ -336,16 +392,58 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
       <Dialog open={commentOpen} onClose={onCloseComments} maxWidth="sm" fullWidth>
         <DialogTitle>Комментарии: {commentItem?.title}</DialogTitle>
         <DialogContent dividers>
-          {(commentItem?.comments ?? []).map((c: any) => (
-            <Paper key={c.id} variant="outlined" sx={{ p: 1, mb: 1 }}>
-              <Typography variant="body2" fontWeight={600}>
-                {c.user.username}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {c.text}
-              </Typography>
+          {(commentItem?.comments ?? []).map((comment) => (
+            <Paper key={comment.id} variant="outlined" sx={{ p: 1, mb: 1 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" gap={1} sx={{ mb: 0.75 }}>
+                <Typography variant="body2" fontWeight={600}>
+                  {comment.user?.username ?? "Пользователь"}
+                </Typography>
+
+                {canManageComment(comment) ? (
+                  <Box display="flex" gap={0.5}>
+                    <IconButton
+                      size="small"
+                      onClick={() => onStartEditComment(comment.id, comment.text)}
+                      aria-label="edit-comment"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => onDeleteComment(comment.id)} aria-label="delete-comment">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ) : null}
+              </Box>
+
+              {editingCommentId === comment.id ? (
+                <>
+                  <TextField
+                    value={editingCommentText}
+                    onChange={(e) => setEditingCommentText(e.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                  />
+                  <Box display="flex" justifyContent="flex-end" gap={1} sx={{ mt: 1 }}>
+                    <Button size="small" onClick={onCancelEditComment}>
+                      Отмена
+                    </Button>
+                    <Button size="small" variant="contained" onClick={onSaveCommentEdit}>
+                      Сохранить
+                    </Button>
+                  </Box>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>
+                  {comment.text}
+                </Typography>
+              )}
             </Paper>
           ))}
+
+          {(commentItem?.comments ?? []).length === 0 ? (
+            <Typography color="text.secondary">Пока комментариев нет.</Typography>
+          ) : null}
 
           <TextField
             label="Новый комментарий"

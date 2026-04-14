@@ -15,7 +15,7 @@ export type ChecklistItem = {
   due_date: string | null;
   is_done: boolean;
   updated_at: string;
-  comments?: { id: number; user: { id: number; username: string }; text: string; created_at: string }[];
+  comments?: { id: number; user: { id: number; username: string; email?: string } | null; text: string; created_at: string }[];
 };
 
 export async function listChecklists(tripId: number): Promise<Checklist[]> {
@@ -63,4 +63,27 @@ export async function deleteChecklistItem(tripId: number, checklistId: number, i
 export async function addChecklistComment(tripId: number, checklistId: number, itemId: number, text: string) {
   const res = await api.post(`/trips/${tripId}/checklists/${checklistId}/items/${itemId}/comments/`, { text });
   return res.data;
+}
+
+export async function patchChecklistComment(
+  tripId: number,
+  checklistId: number,
+  itemId: number,
+  commentId: number,
+  text: string
+) {
+  const res = await api.patch(
+    `/trips/${tripId}/checklists/${checklistId}/items/${itemId}/comments/${commentId}/`,
+    { text }
+  );
+  return res.data;
+}
+
+export async function deleteChecklistComment(
+  tripId: number,
+  checklistId: number,
+  itemId: number,
+  commentId: number
+) {
+  await api.delete(`/trips/${tripId}/checklists/${checklistId}/items/${itemId}/comments/${commentId}/`);
 }

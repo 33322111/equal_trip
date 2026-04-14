@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from django.shortcuts import get_object_or_404
 
 from trips.permissions import IsTripMember
 from trips.models import Trip, TripMember
@@ -25,7 +26,7 @@ class TripChecklistViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return (
             Checklist.objects.filter(trip_id=self.kwargs["trip_id"])
-            .prefetch_related("items", "items__comments")
+            .prefetch_related("items", "items__comments__user")
             .order_by("-created_at")
         )
 
@@ -60,7 +61,7 @@ class TripChecklistItemViewSet(viewsets.ModelViewSet):
                 checklist__trip_id=self.kwargs["trip_id"]
             )
             .select_related("assignee")
-            .prefetch_related("comments")
+            .prefetch_related("comments__user")
             .order_by("is_done", "-updated_at")
         )
 
@@ -110,3 +111,25 @@ class TripChecklistItemViewSet(viewsets.ModelViewSet):
 
         comment = ChecklistComment.objects.create(item=item, user=request.user, text=text)
         return Response(ChecklistCommentSerializer(comment).data, status=201)
+
+    @action(detail=True, methods=["patch", "delete"], url_path=r"comments/(?P<comment_id>[^/.]+)")
+    def comment_detail(self, request, trip_id=None, checklist_id=None, pk=None, comment_id=None):
+        item = self.get_object()
+        comment = get_object_or_404(ChecklistComment, pk=comment_id, item=item)
+
+        if comment.user_id != request.user.id:
+            return Response(
+                {"detail": "Можно редактировать и удалять только свои комментарии."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if request.method == "PATCH":
+            text = (request.data.get("text") or "").strip()
+            if not text:
+                return Response({"detail": "text is required"}, status=status.HTTP_400_BAD_REQUEST)
+            comment.text = text
+            comment.save(update_fields=["text"])
+            return Response(ChecklistCommentSerializer(comment).data, status=status.HTTP_200_OK)
+
+        comment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

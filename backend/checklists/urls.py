@@ -23,4 +23,8 @@ urlpatterns = [
         "trips/<int:trip_id>/checklists/<int:checklist_id>/items/<int:pk>/comments/",
         TripChecklistItemViewSet.as_view({"post": "add_comment"}),
     ),
+    path(
+        "trips/<int:trip_id>/checklists/<int:checklist_id>/items/<int:pk>/comments/<int:comment_id>/",
+        TripChecklistItemViewSet.as_view({"patch": "comment_detail", "delete": "comment_detail"}),
+    ),
 ]

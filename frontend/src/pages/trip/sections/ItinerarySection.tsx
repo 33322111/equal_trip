@@ -9,9 +9,13 @@ import {
   Alert,
   IconButton,
   Checkbox,
-  Badge,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import Autocomplete from "@mui/material/Autocomplete";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 
@@ -32,9 +36,13 @@ import {
   createDayItem,
   patchDayItem,
   deleteDayItem,
+  addDayItemComment,
+  patchDayItemComment,
+  deleteDayItemComment,
   DayPlan,
   DayPlanItem,
 } from "../../../api/itinerary";
+import { useAuth } from "../../../context/AuthContext";
 
 type MemberUser = { id: number; username: string; email: string };
 type Props = {
@@ -44,6 +52,7 @@ type Props = {
 };
 
 export default function ItinerarySection({ tripId, members, onError }: Props) {
+  const { user } = useAuth();
   const [days, setDays] = useState<DayPlan[]>([]);
   const [activeDayId, setActiveDayId] = useState<number | null>(null);
   const [dayItems, setDayItems] = useState<DayPlanItem[]>([]);
@@ -54,6 +63,11 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
   const [itTo, setItTo] = useState("");
   const [itDesc, setItDesc] = useState("");
   const [itAssigneeId, setItAssigneeId] = useState<number | null>(null);
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [commentItem, setCommentItem] = useState<DayPlanItem | null>(null);
+  const [commentText, setCommentText] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
 
   const iso = (d: Date) => format(d, "yyyy-MM-dd");
 
@@ -110,13 +124,24 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     setActiveDayId(day ? day.id : null);
   };
 
-  const renderDay = (day: Date, _selected: Array<Date | null>, props: PickersDayProps<Date>) => {
-    const key = iso(day);
-    const has = daysWithItems.has(key);
+  const DayWithPlansMarker = (props: PickersDayProps<Date>) => {
+    const hasPlans = !props.outsideCurrentMonth && daysWithItems.has(iso(props.day));
     return (
-      <Badge key={key} overlap="circular" variant={has ? "dot" : "standard"}>
-        <PickersDay {...props} />
-      </Badge>
+      <PickersDay
+        {...props}
+        sx={[
+          props.sx,
+          hasPlans
+            ? {
+                boxShadow: "inset 0 0 0 2px #0284c7",
+                fontWeight: 700,
+                "&.Mui-selected": {
+                  boxShadow: "inset 0 0 0 2px #0c4a6e",
+                },
+              }
+            : undefined,
+        ]}
+      />
     );
   };
 
@@ -184,162 +209,332 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     await reloadDays();
   };
 
-  const selectedIso = selectedDate ? iso(selectedDate) : null;
+  const refreshCommentItem = async (dayId: number, itemId: number) => {
+    const items = await listDayItems(tripId, dayId);
+    setDayItems(items);
+    const updated = items.find((x) => x.id === itemId) ?? null;
+    setCommentItem(updated);
+  };
+
+  const onOpenComments = (item: DayPlanItem) => {
+    setCommentItem(item);
+    setCommentText("");
+    setEditingCommentId(null);
+    setEditingCommentText("");
+    setCommentOpen(true);
+  };
+
+  const onCloseComments = () => {
+    setCommentOpen(false);
+    setCommentItem(null);
+    setCommentText("");
+    setEditingCommentId(null);
+    setEditingCommentText("");
+  };
+
+  const onSendComment = async () => {
+    if (!activeDayId || !commentItem) return;
+    const text = commentText.trim();
+    if (!text) return;
+
+    try {
+      await addDayItemComment(tripId, activeDayId, commentItem.id, text);
+      setCommentText("");
+      await refreshCommentItem(activeDayId, commentItem.id);
+      await reloadDays();
+    } catch {
+      onError("Не удалось добавить комментарий.");
+    }
+  };
+
+  const onStartEditComment = (commentId: number, text: string) => {
+    setEditingCommentId(commentId);
+    setEditingCommentText(text);
+  };
+
+  const onCancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentText("");
+  };
+
+  const onSaveCommentEdit = async () => {
+    if (!activeDayId || !commentItem || !editingCommentId) return;
+    const text = editingCommentText.trim();
+    if (!text) {
+      onError("Комментарий не может быть пустым.");
+      return;
+    }
+
+    try {
+      await patchDayItemComment(tripId, activeDayId, commentItem.id, editingCommentId, text);
+      onCancelEditComment();
+      await refreshCommentItem(activeDayId, commentItem.id);
+    } catch {
+      onError("Не удалось обновить комментарий.");
+    }
+  };
+
+  const onDeleteComment = async (commentId: number) => {
+    if (!activeDayId || !commentItem) return;
+    if (!window.confirm("Удалить комментарий?")) return;
+
+    try {
+      await deleteDayItemComment(tripId, activeDayId, commentItem.id, commentId);
+      if (editingCommentId === commentId) onCancelEditComment();
+      await refreshCommentItem(activeDayId, commentItem.id);
+      await reloadDays();
+    } catch {
+      onError("Не удалось удалить комментарий.");
+    }
+  };
+
+  const canManageComment = (comment: NonNullable<DayPlanItem["comments"]>[number]) => {
+    return comment.user?.id === user?.id;
+  };
 
   return (
-    <Paper sx={{ p: 2, mt: 3 }}>
-      <Typography variant="h6" gutterBottom>
-        Планировщик по дням
-      </Typography>
+    <>
+      <Paper sx={{ p: 2, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Планировщик по дням
+        </Typography>
 
-      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
-        <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
-          <Box sx={{ width: { xs: "100%", md: 340 }, maxWidth: 340, mx: { xs: "auto", md: 0 } }}>
-            <DateCalendar
-              value={selectedDate}
-              onChange={onPickDate}
-              renderDay={renderDay}
-              sx={{ width: "100%", maxWidth: "100%" }}
-            />
+        <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
+            <Box sx={{ width: { xs: "100%", md: 340 }, maxWidth: 340, mx: { xs: "auto", md: 0 } }}>
+              <DateCalendar
+                value={selectedDate}
+                onChange={onPickDate}
+                slots={{ day: DayWithPlansMarker }}
+                sx={{ width: "100%", maxWidth: "100%" }}
+              />
 
-            {selectedDate && !dayByIso.has(iso(selectedDate)) ? (
-              <Box sx={{ mt: 2 }}>
-                <Alert severity="info" sx={{ mb: 1 }}>
-                  Для этой даты ещё нет дня в планировщике.
-                </Alert>
-                <Button variant="contained" onClick={createDayForSelected} sx={{ width: { xs: "100%", sm: "auto" } }}>
-                  Создать день
-                </Button>
+              <Box display="flex" alignItems="center" gap={1} sx={{ mt: 1.25 }}>
+                <Box sx={{ width: 10, height: 10, borderRadius: "50%", border: "2px solid #0284c7", backgroundColor: "#ffffff" }} />
+                <Typography variant="caption" color="text.secondary">
+                  Дни с активностями
+                </Typography>
               </Box>
-            ) : null}
-          </Box>
 
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              justifyContent="space-between"
-              alignItems={{ xs: "flex-start", sm: "center" }}
-              sx={{ mb: 1 }}
-              gap={1}
-            >
-              <Typography variant="subtitle1" fontWeight={700} sx={{ textTransform: "capitalize" }}>
-                {selectedDate
-                  ? selectedDate.toLocaleDateString("ru-RU", {
-                      weekday: "long",
-                      day: "2-digit",
-                      month: "long",
-                    })
-                  : "Выбери дату"}
-              </Typography>
-
-              {activeDayId ? (
-                <Button color="error" variant="text" onClick={onDeleteDay} sx={{ width: { xs: "100%", sm: "auto" } }}>
-                  Удалить день
-                </Button>
+              {selectedDate && !dayByIso.has(iso(selectedDate)) ? (
+                <Box sx={{ mt: 2 }}>
+                  <Alert severity="info" sx={{ mb: 1 }}>
+                    Для этой даты ещё нет дня в планировщике.
+                  </Alert>
+                  <Button variant="contained" onClick={createDayForSelected} sx={{ width: { xs: "100%", sm: "auto" } }}>
+                    Создать день
+                  </Button>
+                </Box>
               ) : null}
-            </Stack>
+            </Box>
 
-            {!activeDayId ? (
-              <Typography color="text.secondary">
-                Выбери дату с существующим днём (или создай день).
-              </Typography>
-            ) : (
-              <>
-                <Box component="form" onSubmit={onAddItem} sx={{ mb: 2 }}>
-                  <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                justifyContent="space-between"
+                alignItems={{ xs: "flex-start", sm: "center" }}
+                sx={{ mb: 1 }}
+                gap={1}
+              >
+                <Typography variant="subtitle1" fontWeight={700} sx={{ textTransform: "capitalize" }}>
+                  {selectedDate
+                    ? selectedDate.toLocaleDateString("ru-RU", {
+                        weekday: "long",
+                        day: "2-digit",
+                        month: "long",
+                      })
+                    : "Выбери дату"}
+                </Typography>
+
+                {activeDayId ? (
+                  <Button color="error" variant="text" onClick={onDeleteDay} sx={{ width: { xs: "100%", sm: "auto" } }}>
+                    Удалить день
+                  </Button>
+                ) : null}
+              </Stack>
+
+              {!activeDayId ? (
+                <Typography color="text.secondary">
+                  Выбери дату с существующим днём (или создай день).
+                </Typography>
+              ) : (
+                <>
+                  <Box component="form" onSubmit={onAddItem} sx={{ mb: 2 }}>
+                    <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
+                      <TextField
+                        label="Активность"
+                        value={itTitle}
+                        onChange={(e) => setItTitle(e.target.value)}
+                        fullWidth
+                        required
+                      />
+                      <TextField label="С" type="time" value={itFrom} onChange={(e) => setItFrom(e.target.value)} />
+                      <TextField label="До" type="time" value={itTo} onChange={(e) => setItTo(e.target.value)} />
+
+                      <Autocomplete
+                        sx={{ width: { xs: "100%", sm: 260 } }}
+                        options={members.map((m) => m.user)}
+                        getOptionLabel={(u) => `${u.username} (${u.email})`}
+                        value={itAssigneeId ? members.map((m) => m.user).find((u) => u.id === itAssigneeId) ?? null : null}
+                        onChange={(_, v) => setItAssigneeId(v ? v.id : null)}
+                        renderInput={(params) => <TextField {...params} label="Ответственный" />}
+                      />
+
+                      <Button type="submit" variant="contained" sx={{ width: { xs: "100%", lg: "auto" } }}>
+                        Добавить
+                      </Button>
+                    </Stack>
+
                     <TextField
-                      label="Активность"
-                      value={itTitle}
-                      onChange={(e) => setItTitle(e.target.value)}
+                      label="Описание"
+                      value={itDesc}
+                      onChange={(e) => setItDesc(e.target.value)}
                       fullWidth
-                      required
+                      multiline
+                      minRows={2}
+                      sx={{ mt: 1 }}
                     />
-                    <TextField label="С" type="time" value={itFrom} onChange={(e) => setItFrom(e.target.value)} />
-                    <TextField label="До" type="time" value={itTo} onChange={(e) => setItTo(e.target.value)} />
+                  </Box>
 
-                    <Autocomplete
-                      sx={{ width: { xs: "100%", sm: 260 } }}
-                      options={members.map((m) => m.user)}
-                      getOptionLabel={(u) => `${u.username} (${u.email})`}
-                      value={itAssigneeId ? members.map((m) => m.user).find((u) => u.id === itAssigneeId) ?? null : null}
-                      onChange={(_, v) => setItAssigneeId(v ? v.id : null)}
-                      renderInput={(params) => <TextField {...params} label="Ответственный" />}
-                    />
+                  <Box display="flex" flexDirection="column" gap={1}>
+                    {dayItems.map((it) => {
+                      const timeLabel =
+                        it.time_from || it.time_to
+                          ? `${it.time_from ?? ""}${it.time_to ? "–" + it.time_to : ""}`
+                          : "Без времени";
 
-                    <Button type="submit" variant="contained" sx={{ width: { xs: "100%", lg: "auto" } }}>
-                      Добавить
-                    </Button>
-                  </Stack>
+                      return (
+                        <Paper key={it.id} variant="outlined" sx={{ p: 1.5 }}>
+                          <Box
+                            display="flex"
+                            flexDirection={{ xs: "column", sm: "row" }}
+                            justifyContent="space-between"
+                            alignItems={{ xs: "flex-start", sm: "flex-start" }}
+                            gap={1.5}
+                          >
+                            <Box sx={{ minWidth: 0 }}>
+                              <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
+                                <Checkbox checked={it.is_done} onChange={() => onToggleDone(it)} />
+                                <Typography fontWeight={700} sx={{ wordBreak: "break-word" }}>
+                                  {it.title}
+                                </Typography>
+                              </Box>
 
+                              <Typography variant="body2" color="text.secondary">
+                                {timeLabel}
+                                {it.assignee ? ` • ${it.assignee.username}` : ""}
+                              </Typography>
+
+                              {it.description ? (
+                                <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-wrap" }}>
+                                  {it.description}
+                                </Typography>
+                              ) : null}
+
+                              {it.comments?.length ? (
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                  Комментариев: {it.comments.length}
+                                </Typography>
+                              ) : null}
+                            </Box>
+
+                            <Box display="flex" gap={1} sx={{ alignSelf: { xs: "flex-end", sm: "flex-start" } }}>
+                              <IconButton size="small" onClick={() => onOpenComments(it)} aria-label="comments">
+                                <ChatBubbleOutlineIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" onClick={() => onDeleteItem(it.id)} aria-label="delete-activity">
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          </Box>
+                        </Paper>
+                      );
+                    })}
+
+                    {dayItems.length === 0 ? (
+                      <Typography color="text.secondary">Пока активностей нет.</Typography>
+                    ) : null}
+                  </Box>
+                </>
+              )}
+            </Box>
+          </Stack>
+        </LocalizationProvider>
+      </Paper>
+
+      <Dialog open={commentOpen} onClose={onCloseComments} maxWidth="sm" fullWidth>
+        <DialogTitle>Комментарии: {commentItem?.title}</DialogTitle>
+        <DialogContent dividers>
+          {(commentItem?.comments ?? []).map((comment) => (
+            <Paper key={comment.id} variant="outlined" sx={{ p: 1, mb: 1 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" gap={1} sx={{ mb: 0.75 }}>
+                <Typography variant="body2" fontWeight={600}>
+                  {comment.user?.username ?? "Пользователь"}
+                </Typography>
+
+                {canManageComment(comment) ? (
+                  <Box display="flex" gap={0.5}>
+                    <IconButton
+                      size="small"
+                      onClick={() => onStartEditComment(comment.id, comment.text)}
+                      aria-label="edit-comment"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => onDeleteComment(comment.id)} aria-label="delete-comment">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ) : null}
+              </Box>
+
+              {editingCommentId === comment.id ? (
+                <>
                   <TextField
-                    label="Описание"
-                    value={itDesc}
-                    onChange={(e) => setItDesc(e.target.value)}
+                    value={editingCommentText}
+                    onChange={(e) => setEditingCommentText(e.target.value)}
                     fullWidth
                     multiline
                     minRows={2}
-                    sx={{ mt: 1 }}
                   />
-                </Box>
+                  <Box display="flex" justifyContent="flex-end" gap={1} sx={{ mt: 1 }}>
+                    <Button size="small" onClick={onCancelEditComment}>
+                      Отмена
+                    </Button>
+                    <Button size="small" variant="contained" onClick={onSaveCommentEdit}>
+                      Сохранить
+                    </Button>
+                  </Box>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>
+                  {comment.text}
+                </Typography>
+              )}
+            </Paper>
+          ))}
 
-                <Box display="flex" flexDirection="column" gap={1}>
-                  {dayItems.map((it) => {
-                    const timeLabel =
-                      it.time_from || it.time_to
-                        ? `${it.time_from ?? ""}${it.time_to ? "–" + it.time_to : ""}`
-                        : "Без времени";
+          {(commentItem?.comments ?? []).length === 0 ? (
+            <Typography color="text.secondary">Пока комментариев нет.</Typography>
+          ) : null}
 
-                    return (
-                      <Paper key={it.id} variant="outlined" sx={{ p: 1.5 }}>
-                        <Box
-                          display="flex"
-                          flexDirection={{ xs: "column", sm: "row" }}
-                          justifyContent="space-between"
-                          alignItems={{ xs: "flex-start", sm: "flex-start" }}
-                          gap={1.5}
-                        >
-                          <Box sx={{ minWidth: 0 }}>
-                            <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
-                              <Checkbox checked={it.is_done} onChange={() => onToggleDone(it)} />
-                              <Typography fontWeight={700} sx={{ wordBreak: "break-word" }}>
-                                {it.title}
-                              </Typography>
-                            </Box>
-
-                            <Typography variant="body2" color="text.secondary">
-                              {timeLabel}
-                              {it.assignee ? ` • ${it.assignee.username}` : ""}
-                            </Typography>
-
-                            {it.description ? (
-                              <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-wrap" }}>
-                                {it.description}
-                              </Typography>
-                            ) : null}
-                          </Box>
-
-                          <Box display="flex" gap={1} sx={{ alignSelf: { xs: "flex-end", sm: "flex-start" } }}>
-                            <IconButton size="small" disabled aria-label="comments-disabled">
-                              <ChatBubbleOutlineIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton size="small" onClick={() => onDeleteItem(it.id)} aria-label="delete-activity">
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                        </Box>
-                      </Paper>
-                    );
-                  })}
-
-                  {dayItems.length === 0 ? (
-                    <Typography color="text.secondary">Пока активностей нет.</Typography>
-                  ) : null}
-                </Box>
-              </>
-            )}
-          </Box>
-        </Stack>
-      </LocalizationProvider>
-    </Paper>
+          <TextField
+            label="Новый комментарий"
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            fullWidth
+            multiline
+            minRows={2}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onSendComment} variant="contained">
+            Отправить
+          </Button>
+          <Button onClick={onCloseComments}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
