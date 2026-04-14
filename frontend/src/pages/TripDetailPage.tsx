@@ -461,7 +461,7 @@ export default function TripDetailPage() {
 
   if (!trip) {
     return (
-      <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
+      <Box sx={{ minHeight: "100%", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
         <Container>
           <Paper
             sx={{
@@ -481,7 +481,7 @@ export default function TripDetailPage() {
 
   return (
     <>
-    <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
+    <Box sx={{ minHeight: "100%", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
       <Container sx={{ mb: 6 }}>
         <Paper
           sx={{

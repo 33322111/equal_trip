@@ -26,7 +26,7 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 4, md: 8 } }}>
+    <Box sx={{ minHeight: "100%", backgroundColor: "#edf1f5", py: { xs: 4, md: 8 } }}>
       <Container maxWidth="sm">
         <Paper sx={{ p: { xs: 2.5, md: 4 }, borderRadius: 4, border: "1px solid #d6dee6", boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" }}>
           <Typography variant="h4" gutterBottom>

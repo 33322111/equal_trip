@@ -64,7 +64,7 @@ export default function Header() {
   const onLogout = () => {
     logout();
     setAnchorEl(null);
-    navigate("/login");
+    navigate("/");
   };
 
   return (

@@ -305,7 +305,7 @@ export default function TripsPage() {
   };
 
   return (
-    <Box sx={{ minHeight: "100vh", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
+    <Box sx={{ minHeight: "100%", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
       <Container>
         <Paper
           sx={{
