@@ -1,15 +1,23 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Container, TextField, Button, Typography, Box, Alert, Paper } from '@mui/material';
 
 const LoginPage: React.FC = () => {
-  const { login } = useAuth();
+  const PENDING_INVITE_TOKEN_KEY = "pendingInviteToken";
+  const { login, isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!isAuthenticated) return;
+    const pendingInviteToken = localStorage.getItem(PENDING_INVITE_TOKEN_KEY);
+    navigate(pendingInviteToken ? `/join/${pendingInviteToken}` : '/trips', { replace: true });
+  }, [isAuthenticated, isLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +25,8 @@ const LoginPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       await login(username, password);
-      navigate('/trips');
+      const pendingInviteToken = localStorage.getItem(PENDING_INVITE_TOKEN_KEY);
+      navigate(pendingInviteToken ? `/join/${pendingInviteToken}` : '/trips');
     } catch (err) {
       setError('Неверное имя пользователя или пароль');
     } finally {

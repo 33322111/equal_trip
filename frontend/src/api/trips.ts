@@ -20,6 +20,18 @@ export type TripMember = {
 };
 
 export type TripDetail = Trip & { members: TripMember[] };
+export type InviteTripInfo = {
+  id: number;
+  title: string;
+  start_date: string | null;
+  end_date: string | null;
+  owner: { id: number; username: string; email: string };
+};
+export type InviteInfo = {
+  token: string;
+  is_member: boolean;
+  trip: InviteTripInfo;
+};
 
 export async function listTrips(): Promise<Trip[]> {
   const res = await api.get("/trips/");
@@ -48,6 +60,11 @@ export async function createInvite(tripId: number): Promise<{ token: string }> {
 
 export async function acceptInvite(token: string): Promise<{ trip_id: number }> {
   const res = await api.post(`/invites/accept/${token}/`);
+  return res.data;
+}
+
+export async function getInviteInfo(token: string): Promise<InviteInfo> {
+  const res = await api.get(`/invites/info/${token}/`);
   return res.data;
 }
 

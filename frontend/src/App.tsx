@@ -50,14 +50,7 @@ const App: React.FC = () => {
             }
           />
 
-          <Route
-            path="/join/:token"
-            element={
-              <PrivateRoute>
-                <JoinByTokenPage />
-              </PrivateRoute>
-            }
-          />
+          <Route path="/join/:token" element={<JoinByTokenPage />} />
 
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password/:token" element={<ResetPasswordPage />} />

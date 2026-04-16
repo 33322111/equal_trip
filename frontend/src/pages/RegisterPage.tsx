@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Container, TextField, Button, Typography, Box, Alert, Paper, Stack } from '@mui/material';
@@ -20,7 +20,8 @@ const PASSWORD_RULES: PasswordRule[] = [
 ];
 
 const RegisterPage: React.FC = () => {
-  const { register } = useAuth();
+  const PENDING_INVITE_TOKEN_KEY = "pendingInviteToken";
+  const { register, isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -41,6 +42,13 @@ const RegisterPage: React.FC = () => {
   const isPasswordValid = passwordRuleResults.every((r) => r.passed);
   const isPasswordMismatch = password2.length > 0 && password !== password2;
 
+  useEffect(() => {
+    if (isLoading) return;
+    if (!isAuthenticated) return;
+    const pendingInviteToken = localStorage.getItem(PENDING_INVITE_TOKEN_KEY);
+    navigate(pendingInviteToken ? `/join/${pendingInviteToken}` : '/trips', { replace: true });
+  }, [isAuthenticated, isLoading, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -58,7 +66,8 @@ const RegisterPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       await register(username, email, password);
-      navigate('/trips');
+      const pendingInviteToken = localStorage.getItem(PENDING_INVITE_TOKEN_KEY);
+      navigate(pendingInviteToken ? `/join/${pendingInviteToken}` : '/trips');
     } catch (err: any) {
       const data = err?.response?.data;
       const details = [

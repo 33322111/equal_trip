@@ -140,18 +140,53 @@ class TripViewSet(viewsets.ModelViewSet):
 class InviteAcceptViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
-    @action(detail=False, methods=["post"], url_path=r"accept/(?P<token>[^/.]+)")
-    def accept(self, request, token=None):
+    def _get_active_invite(self, token: str):
         try:
-            invite = TripInvite.objects.select_related("trip").get(token=token)
+            invite = TripInvite.objects.select_related("trip", "trip__owner").get(token=token)
         except TripInvite.DoesNotExist:
-            return Response({"detail": "Invite not found."}, status=404)
+            return None, Response({"detail": "Invite not found."}, status=status.HTTP_404_NOT_FOUND)
 
         if invite.is_used:
-            return Response({"detail": "Invite already used."}, status=400)
+            return None, Response({"detail": "Invite already used."}, status=status.HTTP_400_BAD_REQUEST)
 
         if invite.expires_at and timezone.now() > invite.expires_at:
-            return Response({"detail": "Invite expired."}, status=400)
+            return None, Response({"detail": "Invite expired."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return invite, None
+
+    @action(detail=False, methods=["get"], url_path=r"info/(?P<token>[^/.]+)")
+    def info(self, request, token=None):
+        invite, error_response = self._get_active_invite(token)
+        if error_response:
+            return error_response
+
+        trip = invite.trip
+        is_member = TripMember.objects.filter(trip=trip, user=request.user).exists()
+
+        return Response(
+            {
+                "token": str(invite.token),
+                "is_member": is_member,
+                "trip": {
+                    "id": trip.id,
+                    "title": trip.title,
+                    "start_date": trip.start_date,
+                    "end_date": trip.end_date,
+                    "owner": {
+                        "id": trip.owner.id,
+                        "username": trip.owner.username,
+                        "email": trip.owner.email,
+                    },
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["post"], url_path=r"accept/(?P<token>[^/.]+)")
+    def accept(self, request, token=None):
+        invite, error_response = self._get_active_invite(token)
+        if error_response:
+            return error_response
 
         trip = invite.trip
 
@@ -162,4 +197,4 @@ class InviteAcceptViewSet(viewsets.ViewSet):
         invite.used_at = timezone.now()
         invite.save(update_fields=["is_used", "used_by", "used_at"])
 
-        return Response({"trip_id": trip.id}, status=200)
+        return Response({"trip_id": trip.id}, status=status.HTTP_200_OK)
