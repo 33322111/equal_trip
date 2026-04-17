@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -23,10 +22,10 @@ load_dotenv(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-vv9cs9-+b*bx9is&%0u2j7m=7m5i=!jd%37lrvey5#74(fc0&+'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-vv9cs9-+b*bx9is&%0u2j7m=7m5i=!jd%37lrvey5#74(fc0&+")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DJANGO_DEBUG", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 if DEBUG:
     ALLOWED_HOSTS = ["*"]
@@ -94,11 +93,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'equaltrip_db',
-        'USER': 'trip_user',
-        'PASSWORD': 'trip_password',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'NAME': os.getenv("DJANGO_DB_NAME", "equaltrip_db"),
+        'USER': os.getenv("DJANGO_DB_USER", "trip_user"),
+        'PASSWORD': os.getenv("DJANGO_DB_PASSWORD", "trip_password"),
+        'HOST': os.getenv("DJANGO_DB_HOST", "localhost"),
+        'PORT': os.getenv("DJANGO_DB_PORT", "5432"),
     }
 }
 
@@ -151,12 +150,12 @@ REST_FRAMEWORK = {
 
 AUTH_USER_MODEL = 'users.User'
 
-FRONTEND_URL = "http://localhost:5173"
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-OPENEXCHANGERATES_API_KEY = "e3888ae5b7854938a4367005549bedc7"
+OPENEXCHANGERATES_API_KEY = os.getenv("OPENEXCHANGERATES_API_KEY", "e3888ae5b7854938a4367005549bedc7")
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST_USER = os.getenv("YANDEX_SMTP_USER")
