@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Chip,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -51,6 +52,27 @@ type Props = {
   onError: (msg: string) => void;
 };
 
+function getTodayIsoLocal() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function timeToMinutes(value: string | null | undefined) {
+  if (!value) return null;
+  const [hRaw, mRaw] = value.split(":");
+  const h = Number(hRaw);
+  const m = Number(mRaw);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function toHm(value: string | null | undefined) {
+  if (!value) return "";
+  const [hRaw, mRaw] = value.split(":");
+  if (hRaw === undefined || mRaw === undefined) return value;
+  return `${hRaw}:${mRaw}`;
+}
+
 export default function ItinerarySection({ tripId, members, onError }: Props) {
   const { user } = useAuth();
   const [days, setDays] = useState<DayPlan[]>([]);
@@ -63,6 +85,14 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
   const [itTo, setItTo] = useState("");
   const [itDesc, setItDesc] = useState("");
   const [itAssigneeId, setItAssigneeId] = useState<number | null>(null);
+  const [editActivityOpen, setEditActivityOpen] = useState(false);
+  const [editActivity, setEditActivity] = useState<DayPlanItem | null>(null);
+  const [editActivityTitle, setEditActivityTitle] = useState("");
+  const [editActivityFrom, setEditActivityFrom] = useState("");
+  const [editActivityTo, setEditActivityTo] = useState("");
+  const [editActivityDesc, setEditActivityDesc] = useState("");
+  const [editActivityAssigneeId, setEditActivityAssigneeId] = useState<number | null>(null);
+  const [editActivitySaving, setEditActivitySaving] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentItem, setCommentItem] = useState<DayPlanItem | null>(null);
   const [commentText, setCommentText] = useState("");
@@ -84,6 +114,8 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     }
     return s;
   }, [days]);
+
+  const activeDayDate = useMemo(() => days.find((d) => d.id === activeDayId)?.date ?? null, [days, activeDayId]);
 
   const reloadDays = async () => {
     const ds = await listDays(tripId);
@@ -209,6 +241,56 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     await reloadDays();
   };
 
+  const onOpenEditActivity = (item: DayPlanItem) => {
+    setEditActivity(item);
+    setEditActivityTitle(item.title);
+    setEditActivityFrom(toHm(item.time_from));
+    setEditActivityTo(toHm(item.time_to));
+    setEditActivityDesc(item.description ?? "");
+    setEditActivityAssigneeId(item.assignee?.id ?? null);
+    setEditActivityOpen(true);
+  };
+
+  const onCloseEditActivity = () => {
+    setEditActivityOpen(false);
+    setEditActivity(null);
+    setEditActivityTitle("");
+    setEditActivityFrom("");
+    setEditActivityTo("");
+    setEditActivityDesc("");
+    setEditActivityAssigneeId(null);
+    setEditActivitySaving(false);
+  };
+
+  const onSaveEditedActivity = async () => {
+    if (!activeDayId || !editActivity) return;
+    if (!editActivityTitle.trim()) {
+      onError("Введите название активности.");
+      return;
+    }
+    if (editActivityFrom && editActivityTo && editActivityFrom > editActivityTo) {
+      onError("Время начала не может быть позже времени окончания.");
+      return;
+    }
+
+    setEditActivitySaving(true);
+    try {
+      await patchDayItem(tripId, activeDayId, editActivity.id, {
+        title: editActivityTitle.trim(),
+        time_from: editActivityFrom || null,
+        time_to: editActivityTo || null,
+        description: editActivityDesc || "",
+        assignee_id: editActivityAssigneeId,
+      });
+      await reloadDayItems(activeDayId);
+      await reloadDays();
+      onCloseEditActivity();
+    } catch {
+      onError("Не удалось сохранить изменения активности.");
+      setEditActivitySaving(false);
+    }
+  };
+
   const refreshCommentItem = async (dayId: number, itemId: number) => {
     const items = await listDayItems(tripId, dayId);
     setDayItems(items);
@@ -292,6 +374,21 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     return comment.user?.id === user?.id;
   };
 
+  const isDayItemOverdue = (item: DayPlanItem) => {
+    if (item.is_done || !activeDayDate) return false;
+
+    const todayIso = getTodayIsoLocal();
+    if (activeDayDate < todayIso) return true;
+    if (activeDayDate > todayIso) return false;
+
+    const dueMinutes = timeToMinutes(item.time_to);
+    if (dueMinutes === null) return false;
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    return currentMinutes > dueMinutes;
+  };
+
   return (
     <>
       <Paper sx={{ p: 2, mt: 3 }}>
@@ -360,29 +457,56 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
               ) : (
                 <>
                   <Box component="form" onSubmit={onAddItem} sx={{ mb: 2 }}>
-                    <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
-                      <TextField
-                        label="Активность"
-                        value={itTitle}
-                        onChange={(e) => setItTitle(e.target.value)}
-                        fullWidth
-                        required
-                      />
-                      <TextField label="С" type="time" value={itFrom} onChange={(e) => setItFrom(e.target.value)} />
-                      <TextField label="До" type="time" value={itTo} onChange={(e) => setItTo(e.target.value)} />
+                    <Stack spacing={1.5}>
+                      <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                        <TextField
+                          label="Активность"
+                          value={itTitle}
+                          onChange={(e) => setItTitle(e.target.value)}
+                          fullWidth
+                          required
+                        />
 
-                      <Autocomplete
-                        sx={{ width: { xs: "100%", sm: 260 } }}
-                        options={members.map((m) => m.user)}
-                        getOptionLabel={(u) => `${u.username} (${u.email})`}
-                        value={itAssigneeId ? members.map((m) => m.user).find((u) => u.id === itAssigneeId) ?? null : null}
-                        onChange={(_, v) => setItAssigneeId(v ? v.id : null)}
-                        renderInput={(params) => <TextField {...params} label="Ответственный" />}
-                      />
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ width: { xs: "100%", md: "auto" } }}>
+                          <TextField
+                            label="С"
+                            type="time"
+                            value={itFrom}
+                            onChange={(e) => setItFrom(e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            inputProps={{ step: 60 }}
+                            sx={{ width: { xs: "100%", sm: 140 } }}
+                          />
+                          <TextField
+                            label="До"
+                            type="time"
+                            value={itTo}
+                            onChange={(e) => setItTo(e.target.value)}
+                            InputLabelProps={{ shrink: true }}
+                            inputProps={{ step: 60 }}
+                            sx={{ width: { xs: "100%", sm: 140 } }}
+                          />
+                        </Stack>
+                      </Stack>
 
-                      <Button type="submit" variant="contained" sx={{ width: { xs: "100%", lg: "auto" } }}>
-                        Добавить
-                      </Button>
+                      <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "flex-start" }}>
+                        <Autocomplete
+                          sx={{ flex: 1, minWidth: 0 }}
+                          options={members.map((m) => m.user)}
+                          getOptionLabel={(u) => `${u.username} (${u.email})`}
+                          value={itAssigneeId ? members.map((m) => m.user).find((u) => u.id === itAssigneeId) ?? null : null}
+                          onChange={(_, v) => setItAssigneeId(v ? v.id : null)}
+                          renderInput={(params) => <TextField {...params} label="Ответственный" />}
+                        />
+
+                        <Button
+                          type="submit"
+                          variant="contained"
+                          sx={{ width: { xs: "100%", md: 180 }, height: { md: 56 } }}
+                        >
+                          Добавить
+                        </Button>
+                      </Stack>
                     </Stack>
 
                     <TextField
@@ -398,9 +522,11 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
 
                   <Box display="flex" flexDirection="column" gap={1}>
                     {dayItems.map((it) => {
+                      const fromHm = toHm(it.time_from);
+                      const toHmValue = toHm(it.time_to);
                       const timeLabel =
-                        it.time_from || it.time_to
-                          ? `${it.time_from ?? ""}${it.time_to ? "–" + it.time_to : ""}`
+                        fromHm || toHmValue
+                          ? `${fromHm}${toHmValue ? "–" + toHmValue : ""}`
                           : "Без времени";
 
                       return (
@@ -415,9 +541,12 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
                             <Box sx={{ minWidth: 0 }}>
                               <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
                                 <Checkbox checked={it.is_done} onChange={() => onToggleDone(it)} />
-                                <Typography fontWeight={700} sx={{ wordBreak: "break-word" }}>
-                                  {it.title}
-                                </Typography>
+                                <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                                  <Typography fontWeight={700} sx={{ wordBreak: "break-word" }}>
+                                    {it.title}
+                                  </Typography>
+                                  {isDayItemOverdue(it) ? <Chip label="Просрочено" size="small" color="error" /> : null}
+                                </Box>
                               </Box>
 
                               <Typography variant="body2" color="text.secondary">
@@ -439,6 +568,9 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
                             </Box>
 
                             <Box display="flex" gap={1} sx={{ alignSelf: { xs: "flex-end", sm: "flex-start" } }}>
+                              <IconButton size="small" onClick={() => onOpenEditActivity(it)} aria-label="edit-activity">
+                                <EditIcon fontSize="small" />
+                              </IconButton>
                               <IconButton size="small" onClick={() => onOpenComments(it)} aria-label="comments">
                                 <ChatBubbleOutlineIcon fontSize="small" />
                               </IconButton>
@@ -461,6 +593,70 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
           </Stack>
         </LocalizationProvider>
       </Paper>
+
+      <Dialog open={editActivityOpen} onClose={onCloseEditActivity} maxWidth="sm" fullWidth>
+        <DialogTitle>Редактировать активность</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} sx={{ mt: 0.5 }}>
+            <TextField
+              label="Активность"
+              value={editActivityTitle}
+              onChange={(e) => setEditActivityTitle(e.target.value)}
+              fullWidth
+              required
+            />
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField
+                label="С"
+                type="time"
+                value={editActivityFrom}
+                onChange={(e) => setEditActivityFrom(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 60 }}
+                fullWidth
+              />
+              <TextField
+                label="До"
+                type="time"
+                value={editActivityTo}
+                onChange={(e) => setEditActivityTo(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 60 }}
+                fullWidth
+              />
+            </Stack>
+            <Autocomplete
+              options={members.map((m) => m.user)}
+              getOptionLabel={(u) => `${u.username} (${u.email})`}
+              value={
+                editActivityAssigneeId
+                  ? members.map((m) => m.user).find((u) => u.id === editActivityAssigneeId) ?? null
+                  : null
+              }
+              onChange={(_, v) => setEditActivityAssigneeId(v ? v.id : null)}
+              renderInput={(params) => <TextField {...params} label="Ответственный" />}
+            />
+            <TextField
+              label="Описание"
+              value={editActivityDesc}
+              onChange={(e) => setEditActivityDesc(e.target.value)}
+              fullWidth
+              multiline
+              minRows={2}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onCloseEditActivity}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={onSaveEditedActivity}
+            disabled={editActivitySaving || !editActivityTitle.trim()}
+          >
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={commentOpen} onClose={onCloseComments} maxWidth="sm" fullWidth>
         <DialogTitle>Комментарии: {commentItem?.title}</DialogTitle>

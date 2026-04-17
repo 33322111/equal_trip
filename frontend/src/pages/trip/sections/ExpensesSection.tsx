@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   Paper,
   Typography,
@@ -13,8 +13,12 @@ import {
   useMediaQuery,
   FormControlLabel,
   Checkbox,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TablePagination,
 } from "@mui/material";
-import { YMaps, Map as YandexMap, Placemark, SearchControl } from "@pbe/react-yandex-maps";
 import { useTheme } from "@mui/material/styles";
 
 import EditIcon from "@mui/icons-material/Edit";
@@ -42,9 +46,22 @@ import ExpenseEditDialog from "../../../components/ExpenseEditDialog";
 import { TripDetail } from "../../../api/trips";
 import ReceiptDialog from "../../../components/ReceiptDialog";
 import { API_BASE_URL } from "../../../config/runtime";
+import ExpenseDetailsPanel from "../../../components/ExpenseDetailsPanel";
 
 const DEFAULT_MAP_CENTER: [number, number] = [55.751244, 37.618423];
+const ExpenseLocationMapPicker = lazy(() => import("../../../components/ExpenseLocationMapPicker"));
 type SplitMode = "equal" | "custom";
+type ExpenseSortMode =
+  | "created_desc"
+  | "created_asc"
+  | "amount_rub_desc"
+  | "amount_rub_asc"
+  | "title_asc"
+  | "title_desc"
+  | "category_asc"
+  | "category_desc"
+  | "payer_asc"
+  | "payer_desc";
 
 type Props = {
   tripId: number;
@@ -102,6 +119,19 @@ function buildEvenSplit(total: number, userIds: number[]) {
   return result;
 }
 
+function toTimestamp(value: string | null | undefined) {
+  if (!value) return 0;
+  const ts = Date.parse(value);
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function toSortAmountRub(ex: Expense) {
+  const rub = Number(ex.amount_rub);
+  if (Number.isFinite(rub)) return rub;
+  const base = Number(ex.amount);
+  return Number.isFinite(base) ? base : 0;
+}
+
 export default function ExpensesSection({ tripId, trip, onAfterChange, onError }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -115,15 +145,19 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const [formSplitMode, setFormSplitMode] = useState<SplitMode>("equal");
   const [formShareUserIds, setFormShareUserIds] = useState<number[]>([]);
   const [formShareAmounts, setFormShareAmounts] = useState<Record<number, string>>({});
+  const [expenseSortMode, setExpenseSortMode] = useState<ExpenseSortMode>("created_desc");
   const [formLat, setFormLat] = useState<number | null>(null);
   const [formLng, setFormLng] = useState<number | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(DEFAULT_MAP_CENTER);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const searchControlRef = useRef<any>(null);
+  const [expensePage, setExpensePage] = useState(0);
+  const [expenseRowsPerPage, setExpenseRowsPerPage] = useState(10);
 
   // Edit dialog
   const [editOpen, setEditOpen] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsExpense, setDetailsExpense] = useState<Expense | null>(null);
 
   // Receipt dialog
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -348,6 +382,16 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     setSelectedExpense(null);
   };
 
+  const onOpenDetails = (expense: Expense) => {
+    setDetailsExpense(expense);
+    setDetailsOpen(true);
+  };
+
+  const onCloseDetails = () => {
+    setDetailsOpen(false);
+    setDetailsExpense(null);
+  };
+
   const onUploadReceipt = async (ex: Expense, file: File, inputEl: HTMLInputElement) => {
     try {
       await uploadExpenseReceipt(tripId, ex.id, file);
@@ -410,6 +454,56 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const toggleFormShareUser = (uid: number) => {
     setFormShareUserIds((prev) => (prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]));
   };
+
+  const sortedExpenses = useMemo(() => {
+    const list = [...expenses];
+    list.sort((a, b) => {
+      switch (expenseSortMode) {
+        case "created_asc":
+          return toTimestamp(a.created_at) - toTimestamp(b.created_at);
+        case "amount_rub_desc":
+          return toSortAmountRub(b) - toSortAmountRub(a);
+        case "amount_rub_asc":
+          return toSortAmountRub(a) - toSortAmountRub(b);
+        case "title_asc":
+          return a.title.localeCompare(b.title, "ru-RU", { sensitivity: "base" });
+        case "title_desc":
+          return b.title.localeCompare(a.title, "ru-RU", { sensitivity: "base" });
+        case "category_asc":
+          return (a.category?.name ?? "Без категории").localeCompare(b.category?.name ?? "Без категории", "ru-RU", {
+            sensitivity: "base",
+          });
+        case "category_desc":
+          return (b.category?.name ?? "Без категории").localeCompare(a.category?.name ?? "Без категории", "ru-RU", {
+            sensitivity: "base",
+          });
+        case "payer_asc":
+          return a.created_by.username.localeCompare(b.created_by.username, "ru-RU", { sensitivity: "base" });
+        case "payer_desc":
+          return b.created_by.username.localeCompare(a.created_by.username, "ru-RU", { sensitivity: "base" });
+        case "created_desc":
+        default:
+          return toTimestamp(b.created_at) - toTimestamp(a.created_at);
+      }
+    });
+    return list;
+  }, [expenses, expenseSortMode]);
+
+  useEffect(() => {
+    setExpensePage(0);
+  }, [expenseSortMode, tripId]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(sortedExpenses.length / expenseRowsPerPage) - 1);
+    if (expensePage > maxPage) {
+      setExpensePage(maxPage);
+    }
+  }, [sortedExpenses.length, expenseRowsPerPage, expensePage]);
+
+  const visibleExpenses = useMemo(() => {
+    const start = expensePage * expenseRowsPerPage;
+    return sortedExpenses.slice(start, start + expenseRowsPerPage);
+  }, [sortedExpenses, expensePage, expenseRowsPerPage]);
 
   return (
     <>
@@ -564,46 +658,18 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
               Нажми на карту, чтобы выбрать место расхода. Поле можно оставить пустым.
             </Typography>
 
-            <YMaps query={{ apikey: import.meta.env.VITE_YMAPS_API_KEY }}>
-              <YandexMap
-                state={{ center: mapCenter, zoom: 10 }}
-                width="100%"
+            <Suspense fallback={<Paper variant="outlined" sx={{ height: mapHeight, display: "grid", placeItems: "center" }}><Typography color="text.secondary">Загрузка карты…</Typography></Paper>}>
+              <ExpenseLocationMapPicker
+                center={mapCenter}
+                selectedPoint={selectedPoint}
                 height={mapHeight}
-                onClick={(event: any) => {
-                  const coords = event.get("coords") as number[] | undefined;
-                  if (!coords || coords.length < 2) return;
-                  const nextLat = Number(coords[0].toFixed(6));
-                  const nextLng = Number(coords[1].toFixed(6));
-                  setFormLat(nextLat);
-                  setFormLng(nextLng);
-                  setMapCenter([nextLat, nextLng]);
+                onPickPoint={(lat, lng) => {
+                  setFormLat(lat);
+                  setFormLng(lng);
+                  setMapCenter([lat, lng]);
                 }}
-              >
-                <SearchControl
-                  instanceRef={searchControlRef}
-                  options={{
-                    float: "right",
-                    noPlacemark: true,
-                    placeholderContent: "Найти адрес или место",
-                  }}
-                  modules={["control.SearchControl"]}
-                  onResultSelect={async (event: any) => {
-                    const index = event.get("index");
-                    const control = searchControlRef.current;
-                    if (!control) return;
-                    const result = await control.getResult(index);
-                    const coords = result?.geometry?.getCoordinates?.();
-                    if (!coords || coords.length < 2) return;
-                    const nextLat = Number(coords[0].toFixed(6));
-                    const nextLng = Number(coords[1].toFixed(6));
-                    setFormLat(nextLat);
-                    setFormLng(nextLng);
-                    setMapCenter([nextLat, nextLng]);
-                  }}
-                />
-                {selectedPoint ? <Placemark geometry={selectedPoint} /> : null}
-              </YandexMap>
-            </YMaps>
+              />
+            </Suspense>
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 1.5 }}>
               <TextField
@@ -637,8 +703,37 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
         <Divider sx={{ mb: 2 }} />
 
         {/* Список расходов */}
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "stretch", sm: "center" }}
+          spacing={1.5}
+          sx={{ mb: 2 }}
+        >
+          <Typography variant="subtitle1">Список расходов</Typography>
+          <TextField
+            select
+            label="Сортировка"
+            value={expenseSortMode}
+            onChange={(e) => setExpenseSortMode(e.target.value as ExpenseSortMode)}
+            sx={{ width: { xs: "100%", sm: 320 } }}
+            size="small"
+          >
+            <MenuItem value="created_desc">Сначала новые</MenuItem>
+            <MenuItem value="created_asc">Сначала старые</MenuItem>
+            <MenuItem value="amount_rub_desc">Сумма (больше → меньше)</MenuItem>
+            <MenuItem value="amount_rub_asc">Сумма (меньше → больше)</MenuItem>
+            <MenuItem value="title_asc">Название (А → Я)</MenuItem>
+            <MenuItem value="title_desc">Название (Я → А)</MenuItem>
+            <MenuItem value="category_asc">Категория (А → Я)</MenuItem>
+            <MenuItem value="category_desc">Категория (Я → А)</MenuItem>
+            <MenuItem value="payer_asc">Кто оплатил (А → Я)</MenuItem>
+            <MenuItem value="payer_desc">Кто оплатил (Я → А)</MenuItem>
+          </TextField>
+        </Stack>
+
         <Box display="flex" flexDirection="column" gap={1}>
-          {expenses.map((ex) => {
+          {visibleExpenses.map((ex) => {
             const receiptAbs = ex.receipt ? toAbsUrl(ex.receipt) : null;
 
             return (
@@ -651,9 +746,31 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                   gap={1.5}
                 >
                   <Box sx={{ minWidth: 0 }}>
-                    <Typography fontWeight={600} sx={{ wordBreak: "break-word" }}>
+                    <Button
+                      variant="text"
+                      onClick={() => onOpenDetails(ex)}
+                      sx={{
+                        p: "2px 6px",
+                        m: "-2px -6px 0",
+                        minWidth: 0,
+                        textTransform: "none",
+                        fontSize: "1rem",
+                        fontWeight: 700,
+                        color: "primary.main",
+                        justifyContent: "flex-start",
+                        alignSelf: "flex-start",
+                        textDecoration: "underline",
+                        textDecorationStyle: "dotted",
+                        textUnderlineOffset: "3px",
+                        borderRadius: 1,
+                        "&:hover": {
+                          textDecorationStyle: "solid",
+                          backgroundColor: "action.hover",
+                        },
+                      }}
+                    >
                       {ex.title}
-                    </Typography>
+                    </Button>
 
                     <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
                       {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
@@ -725,10 +842,27 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
             );
           })}
 
-          {expenses.length === 0 ? (
+          {sortedExpenses.length === 0 ? (
             <Typography color="text.secondary">Пока нет расходов. Добавь первый 🙂</Typography>
           ) : null}
         </Box>
+
+        {sortedExpenses.length > 0 ? (
+          <TablePagination
+            component="div"
+            count={sortedExpenses.length}
+            page={expensePage}
+            onPageChange={(_, page) => setExpensePage(page)}
+            rowsPerPage={expenseRowsPerPage}
+            onRowsPerPageChange={(event) => {
+              setExpenseRowsPerPage(parseInt(event.target.value, 10));
+              setExpensePage(0);
+            }}
+            rowsPerPageOptions={[10, 20, 50]}
+            labelRowsPerPage="Расходов на странице:"
+            labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count}`}
+          />
+        ) : null}
       </Paper>
 
       {/* Edit dialog */}
@@ -754,6 +888,14 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
         onDownload={onDownloadReceiptFromDialog}
         onDelete={receiptUrl ? onDeleteReceipt : undefined}
       />
+
+      <Dialog open={detailsOpen} onClose={onCloseDetails} maxWidth="md" fullWidth>
+        <DialogTitle>Детали расхода</DialogTitle>
+        <DialogContent dividers>{detailsExpense ? <ExpenseDetailsPanel expense={detailsExpense} /> : null}</DialogContent>
+        <DialogActions>
+          <Button onClick={onCloseDetails}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   Container,
   Typography,
@@ -51,7 +51,6 @@ import {
 
 import { getTripStats, TripStats } from "../api/stats";
 import TripStatsView from "../components/TripStats";
-import TripMap from "../components/TripMap";
 import { downloadTripCsv, downloadTripPdf, downloadReceipt } from "../api/exports";
 
 import ItinerarySection from "./trip/sections/ItinerarySection";
@@ -85,6 +84,8 @@ type SectionKey =
   | "balance"
   | "stats"
   | "actions";
+
+const TripMap = lazy(() => import("../components/TripMap"));
 
 function TripSection({
   title,
@@ -714,7 +715,15 @@ export default function TripDetailPage() {
           collapsed={collapsedSections.map}
           onToggle={() => toggleSection("map")}
         >
-          <TripMap expenses={expenses} />
+          <Suspense
+            fallback={
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography color="text.secondary">Загрузка карты…</Typography>
+              </Paper>
+            }
+          >
+            <TripMap expenses={expenses} />
+          </Suspense>
         </TripSection>
 
         <TripSection

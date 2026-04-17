@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Chip,
 } from "@mui/material";
 
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -57,6 +58,12 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
   const [itemTitle, setItemTitle] = useState("");
   const [itemDueDate, setItemDueDate] = useState<string>("");
   const [itemAssigneeId, setItemAssigneeId] = useState<number | null>(null);
+  const [editItemOpen, setEditItemOpen] = useState(false);
+  const [editItem, setEditItem] = useState<ChecklistItem | null>(null);
+  const [editItemTitle, setEditItemTitle] = useState("");
+  const [editItemDueDate, setEditItemDueDate] = useState("");
+  const [editItemAssigneeId, setEditItemAssigneeId] = useState<number | null>(null);
+  const [editItemSaving, setEditItemSaving] = useState(false);
 
   // comments dialog
   const [commentOpen, setCommentOpen] = useState(false);
@@ -171,6 +178,45 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     }
   };
 
+  const onOpenEditItem = (item: ChecklistItem) => {
+    setEditItem(item);
+    setEditItemTitle(item.title);
+    setEditItemDueDate(item.due_date ?? "");
+    setEditItemAssigneeId(item.assignee?.id ?? null);
+    setEditItemOpen(true);
+  };
+
+  const onCloseEditItem = () => {
+    setEditItemOpen(false);
+    setEditItem(null);
+    setEditItemTitle("");
+    setEditItemDueDate("");
+    setEditItemAssigneeId(null);
+    setEditItemSaving(false);
+  };
+
+  const onSaveEditedItem = async () => {
+    if (!activeChecklistId || !editItem) return;
+    if (!editItemTitle.trim()) {
+      onError("Введите название задачи.");
+      return;
+    }
+
+    setEditItemSaving(true);
+    try {
+      await patchChecklistItem(tripId, activeChecklistId, editItem.id, {
+        title: editItemTitle.trim(),
+        assignee_id: editItemAssigneeId,
+        due_date: editItemDueDate ? editItemDueDate : null,
+      });
+      await reloadItems(activeChecklistId);
+      onCloseEditItem();
+    } catch {
+      onError("Не удалось сохранить изменения задачи.");
+      setEditItemSaving(false);
+    }
+  };
+
   const refreshCommentItem = async (checklistId: number, itemId: number) => {
     const items = await listChecklistItems(tripId, checklistId);
     setChecklistItems(items);
@@ -251,6 +297,13 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
   const canManageComment = (comment: NonNullable<ChecklistItem["comments"]>[number]) => {
     return comment.user?.id === user?.id;
   };
+
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
+    today.getDate()
+  ).padStart(2, "0")}`;
+  const isChecklistItemOverdue = (item: ChecklistItem) =>
+    !!item.due_date && !item.is_done && item.due_date < todayIso;
 
   return (
     <>
@@ -352,9 +405,14 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
                     <Box display="flex" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
                       <Checkbox checked={it.is_done} onChange={() => onToggleDone(it)} />
                       <Box sx={{ minWidth: 0 }}>
-                        <Typography fontWeight={600} sx={{ wordBreak: "break-word" }}>
-                          {it.title}
-                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                          <Typography fontWeight={600} sx={{ wordBreak: "break-word" }}>
+                            {it.title}
+                          </Typography>
+                          {isChecklistItemOverdue(it) ? (
+                            <Chip label="Просрочено" size="small" color="error" />
+                          ) : null}
+                        </Box>
                         <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
                           {it.assignee ? `Ответственный: ${it.assignee.username}` : "Ответственный: —"}
                           {it.due_date ? ` • Срок: ${it.due_date}` : ""}
@@ -363,6 +421,9 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
                     </Box>
 
                     <Box display="flex" alignItems="center" gap={1} sx={{ alignSelf: { xs: "flex-end", sm: "auto" } }}>
+                      <IconButton size="small" onClick={() => onOpenEditItem(it)} aria-label="edit-item">
+                        <EditIcon fontSize="small" />
+                      </IconButton>
                       <IconButton size="small" onClick={() => onOpenComments(it)} aria-label="comments">
                         <ChatBubbleOutlineIcon fontSize="small" />
                       </IconButton>
@@ -387,6 +448,52 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
           </>
         )}
       </Paper>
+
+      <Dialog open={editItemOpen} onClose={onCloseEditItem} maxWidth="sm" fullWidth>
+        <DialogTitle>Редактировать задачу</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} sx={{ mt: 0.5 }}>
+            <TextField
+              label="Задача"
+              value={editItemTitle}
+              onChange={(e) => setEditItemTitle(e.target.value)}
+              fullWidth
+              required
+            />
+
+            <Autocomplete
+              options={members.map((m) => m.user)}
+              getOptionLabel={(u) => `${u.username} (${u.email})`}
+              value={
+                editItemAssigneeId
+                  ? members.map((m) => m.user).find((u) => u.id === editItemAssigneeId) ?? null
+                  : null
+              }
+              onChange={(_, v) => setEditItemAssigneeId(v ? v.id : null)}
+              renderInput={(params) => <TextField {...params} label="Ответственный" />}
+            />
+
+            <TextField
+              label="Срок"
+              type="date"
+              value={editItemDueDate}
+              onChange={(e) => setEditItemDueDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onCloseEditItem}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={onSaveEditedItem}
+            disabled={editItemSaving || !editItemTitle.trim()}
+          >
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Диалог комментариев */}
       <Dialog open={commentOpen} onClose={onCloseComments} maxWidth="sm" fullWidth>
