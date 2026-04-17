@@ -19,6 +19,11 @@ export type Expense = {
   lng?: string | null;
 };
 
+export type ShareAmountInput = {
+  user_id: number;
+  amount: number | string;
+};
+
 export type BalanceResponse = {
   paid: Record<string, string>;
   owed: Record<string, string>;
@@ -46,6 +51,8 @@ export async function createExpense(
     category_id?: number | null;
     lat?: number | null;
     lng?: number | null;
+    share_user_ids?: number[];
+    share_amounts?: ShareAmountInput[];
   }
 ): Promise<Expense> {
   const res = await api.post(`/trips/${tripId}/expenses/`, payload);
@@ -73,6 +80,7 @@ export async function updateExpense(
     lat?: number | null;
     lng?: number | null;
     share_user_ids?: number[];
+    share_amounts?: ShareAmountInput[];
   }
 ): Promise<Expense> {
   const res = await api.patch(`/trips/${tripId}/expenses/${expenseId}/`, payload);

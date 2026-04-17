@@ -32,6 +32,7 @@ export default function JoinByInvitePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const clearPendingInviteToken = () => localStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
 
   useEffect(() => {
     if (!token) {
@@ -60,6 +61,10 @@ export default function JoinByInvitePage() {
         setInviteInfo(info);
       })
       .catch((e: any) => {
+        const statusCode = e?.response?.status;
+        if (statusCode === 400 || statusCode === 404) {
+          clearPendingInviteToken();
+        }
         const msg = e?.response?.data?.detail || "Не удалось загрузить приглашение.";
         setError(String(msg));
       })
@@ -72,9 +77,13 @@ export default function JoinByInvitePage() {
     setError(null);
     try {
       const { trip_id } = await acceptInvite(token);
-      localStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+      clearPendingInviteToken();
       navigate(`/trips/${trip_id}`, { replace: true });
     } catch (e: any) {
+      const statusCode = e?.response?.status;
+      if (statusCode === 400 || statusCode === 404) {
+        clearPendingInviteToken();
+      }
       const msg = e?.response?.data?.detail || "Не удалось принять приглашение.";
       setError(String(msg));
     } finally {
@@ -83,7 +92,7 @@ export default function JoinByInvitePage() {
   };
 
   const onDecline = () => {
-    localStorage.removeItem(PENDING_INVITE_TOKEN_KEY);
+    clearPendingInviteToken();
     navigate("/trips", { replace: true });
   };
 
@@ -105,9 +114,12 @@ export default function JoinByInvitePage() {
           {loading ? <Typography color="text.secondary">Загрузка приглашения...</Typography> : null}
 
           {error ? (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
+            <Stack spacing={1.5} sx={{ mb: 2 }}>
+              <Alert severity="error">{error}</Alert>
+              <Button variant="outlined" onClick={onDecline}>
+                К моим поездкам
+              </Button>
+            </Stack>
           ) : null}
 
           {!loading && inviteInfo ? (

@@ -11,6 +11,8 @@ import {
   MenuItem,
   InputAdornment,
   useMediaQuery,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import { YMaps, Map as YandexMap, Placemark, SearchControl } from "@pbe/react-yandex-maps";
 import { useTheme } from "@mui/material/styles";
@@ -42,6 +44,7 @@ import ReceiptDialog from "../../../components/ReceiptDialog";
 import { API_BASE_URL } from "../../../config/runtime";
 
 const DEFAULT_MAP_CENTER: [number, number] = [55.751244, 37.618423];
+type SplitMode = "equal" | "custom";
 
 type Props = {
   tripId: number;
@@ -64,6 +67,41 @@ function guessFilename(url: string, fallback: string) {
   }
 }
 
+function normalizeNumber(value: string) {
+  return value.replace(",", ".").trim();
+}
+
+function parseDecimal(value: string) {
+  const num = Number(normalizeNumber(value));
+  return Number.isFinite(num) ? num : NaN;
+}
+
+function round2(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function buildEvenSplit(total: number, userIds: number[]) {
+  const result: Record<number, string> = {};
+  if (!Number.isFinite(total) || total <= 0 || userIds.length === 0) {
+    userIds.forEach((uid) => {
+      result[uid] = "0.00";
+    });
+    return result;
+  }
+
+  const cents = Math.round(total * 100);
+  const base = Math.floor(cents / userIds.length);
+  let remainder = cents - base * userIds.length;
+
+  for (const uid of userIds) {
+    const extra = remainder > 0 ? 1 : 0;
+    remainder -= extra;
+    result[uid] = ((base + extra) / 100).toFixed(2);
+  }
+
+  return result;
+}
+
 export default function ExpensesSection({ tripId, trip, onAfterChange, onError }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -74,6 +112,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const [formAmount, setFormAmount] = useState<string>("");
   const [formCategoryId, setFormCategoryId] = useState<number | "">("");
   const [formCurrency, setFormCurrency] = useState<string>("RUB");
+  const [formSplitMode, setFormSplitMode] = useState<SplitMode>("equal");
+  const [formShareUserIds, setFormShareUserIds] = useState<number[]>([]);
+  const [formShareAmounts, setFormShareAmounts] = useState<Record<number, string>>({});
   const [formLat, setFormLat] = useState<number | null>(null);
   const [formLng, setFormLng] = useState<number | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(DEFAULT_MAP_CENTER);
@@ -102,6 +143,55 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     return map;
   }, [trip.members]);
 
+  const tripUsers = useMemo(() => trip.members.map((m) => m.user), [trip.members]);
+
+  useEffect(() => {
+    const allIds = tripUsers.map((u) => u.id);
+    setFormShareUserIds((prev) => {
+      if (prev.length === 0) return allIds;
+      return prev.filter((id) => allIds.includes(id));
+    });
+    setFormShareAmounts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      allIds.forEach((uid) => {
+        if (next[uid] === undefined) {
+          next[uid] = "0.00";
+          changed = true;
+        }
+      });
+      Object.keys(next).forEach((rawId) => {
+        const uid = Number(rawId);
+        if (!allIds.includes(uid)) {
+          delete next[uid];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [tripUsers]);
+
+  useEffect(() => {
+    setFormShareAmounts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      formShareUserIds.forEach((uid) => {
+        if (next[uid] === undefined) {
+          next[uid] = "0.00";
+          changed = true;
+        }
+      });
+      Object.keys(next).forEach((rawId) => {
+        const uid = Number(rawId);
+        if (!formShareUserIds.includes(uid)) {
+          delete next[uid];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [formShareUserIds]);
+
   const loadLocal = async () => {
     try {
       const [cats, exp] = await Promise.all([listCategories(), listExpenses(tripId)]);
@@ -128,7 +218,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const onAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const amountNum = Number(formAmount);
+    const amountNum = parseDecimal(formAmount);
     const hasLat = formLat !== null;
     const hasLng = formLng !== null;
     const hasCoords = Number.isFinite(formLat) && Number.isFinite(formLng);
@@ -139,6 +229,32 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
       onError("Введите корректную сумму > 0.");
       return;
+    }
+    if (formShareUserIds.length === 0) {
+      onError("Выбери хотя бы одного участника для деления расхода.");
+      return;
+    }
+    if (formSplitMode === "custom") {
+      const invalidCustomAmount = formShareUserIds.some((uid) => {
+        const value = parseDecimal(formShareAmounts[uid] ?? "");
+        return !Number.isFinite(value) || value <= 0;
+      });
+      if (invalidCustomAmount) {
+        onError("Для каждого выбранного участника нужно указать сумму > 0.");
+        return;
+      }
+
+      const customTotal = round2(
+        formShareUserIds.reduce((sum, uid) => {
+          const value = parseDecimal(formShareAmounts[uid] ?? "");
+          return sum + (Number.isFinite(value) ? value : 0);
+        }, 0)
+      );
+      const diff = round2(customTotal - amountNum);
+      if (Math.abs(diff) >= 0.01) {
+        onError(`Сумма долей (${customTotal.toFixed(2)}) должна быть равна сумме расхода (${amountNum.toFixed(2)}).`);
+        return;
+      }
     }
     if ((hasLat || hasLng) && !hasCoords) {
       onError("Введите корректные координаты или очистите точку на карте.");
@@ -154,12 +270,23 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
         category_id: number | null;
         lat?: number;
         lng?: number;
+        share_user_ids?: number[];
+        share_amounts?: { user_id: number; amount: string }[];
       } = {
         title: formTitle.trim(),
         amount: amountNum,
         currency: formCurrency,
         category_id: formCategoryId === "" ? null : formCategoryId,
       };
+
+      if (formSplitMode === "custom") {
+        payload.share_amounts = formShareUserIds.map((uid) => ({
+          user_id: uid,
+          amount: round2(parseDecimal(formShareAmounts[uid] ?? "0")).toFixed(2),
+        }));
+      } else {
+        payload.share_user_ids = formShareUserIds;
+      }
 
       if (hasCoords) {
         payload.lat = formLat;
@@ -172,6 +299,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
       setFormAmount("");
       setFormCategoryId("");
       setFormCurrency("RUB");
+      setFormSplitMode("equal");
+      setFormShareUserIds(tripUsers.map((u) => u.id));
+      setFormShareAmounts({});
       setFormLat(null);
       setFormLng(null);
       setMapCenter(DEFAULT_MAP_CENTER);
@@ -186,6 +316,8 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
         data?.amount?.[0] ||
         data?.currency?.[0] ||
         data?.category_id?.[0] ||
+        data?.share_amounts?.[0] ||
+        data?.share_user_ids?.[0] ||
         data?.lat?.[0] ||
         data?.lng?.[0] ||
         "Не удалось добавить расход. Проверь данные и попробуй снова.";
@@ -266,6 +398,19 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const selectedPoint =
     formLat !== null && formLng !== null ? ([formLat, formLng] as [number, number]) : null;
 
+  const formAmountNum = parseDecimal(formAmount);
+  const formCustomTotal = round2(
+    formShareUserIds.reduce((sum, uid) => {
+      const value = parseDecimal(formShareAmounts[uid] ?? "");
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0)
+  );
+  const formCustomDiff = round2(formCustomTotal - (Number.isFinite(formAmountNum) ? formAmountNum : 0));
+
+  const toggleFormShareUser = (uid: number) => {
+    setFormShareUserIds((prev) => (prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]));
+  };
+
   return (
     <>
       <Paper sx={{ p: 2, mb: 3 }}>
@@ -335,6 +480,81 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
               Добавить
             </Button>
           </Stack>
+
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1">На кого делим</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Выбери участников и способ деления расхода.
+            </Typography>
+
+            <TextField
+              select
+              label="Способ деления"
+              value={formSplitMode}
+              onChange={(e) => setFormSplitMode(e.target.value as SplitMode)}
+              sx={{ width: { xs: "100%", sm: 320 }, mb: 1 }}
+            >
+              <MenuItem value="equal">Поровну между выбранными</MenuItem>
+              <MenuItem value="custom">Кастомно по суммам</MenuItem>
+            </TextField>
+
+            <Box display="flex" flexWrap="wrap">
+              {tripUsers.map((u) => (
+                <FormControlLabel
+                  key={u.id}
+                  control={
+                    <Checkbox
+                      checked={formShareUserIds.includes(u.id)}
+                      onChange={() => toggleFormShareUser(u.id)}
+                    />
+                  }
+                  label={`${u.username} (${u.email})`}
+                />
+              ))}
+            </Box>
+
+            {formSplitMode === "custom" ? (
+              <Box sx={{ mt: 1 }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
+                  <Typography variant="subtitle2">Сумма по участникам</Typography>
+                  <Button
+                    size="small"
+                    variant="text"
+                    disabled={formShareUserIds.length === 0}
+                    onClick={() => {
+                      const even = buildEvenSplit(Number.isFinite(formAmountNum) ? formAmountNum : 0, formShareUserIds);
+                      setFormShareAmounts((prev) => ({ ...prev, ...even }));
+                    }}
+                  >
+                    Распределить поровну
+                  </Button>
+                </Stack>
+
+                <Stack spacing={1} sx={{ mt: 1 }}>
+                  {tripUsers
+                    .filter((u) => formShareUserIds.includes(u.id))
+                    .map((u) => (
+                      <TextField
+                        key={u.id}
+                        label={`${u.username} (${u.email})`}
+                        value={formShareAmounts[u.id] ?? ""}
+                        onChange={(e) =>
+                          setFormShareAmounts((prev) => ({ ...prev, [u.id]: e.target.value }))
+                        }
+                        InputProps={{
+                          endAdornment: <InputAdornment position="end">{formCurrency}</InputAdornment>,
+                        }}
+                        fullWidth
+                      />
+                    ))}
+                </Stack>
+
+                <Typography color={Math.abs(formCustomDiff) < 0.01 ? "success.main" : "warning.main"} sx={{ mt: 1 }}>
+                  Итого по долям: {formCustomTotal.toFixed(2)} {formCurrency} {Math.abs(formCustomDiff) < 0.01 ? "" : `(разница ${formCustomDiff.toFixed(2)})`}
+                </Typography>
+              </Box>
+            ) : null}
+          </Box>
 
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle1" gutterBottom>
@@ -456,7 +676,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                   <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" width={{ xs: "100%", sm: "auto" }}>
                     <Typography fontWeight={700} sx={{ whiteSpace: "nowrap", mr: { xs: "auto", sm: 0 } }}>
                       {ex.amount} {ex.currency}
-                      {ex.amount_rub ? ` (≈ ${ex.amount_rub} RUB)` : ""}
+                      {ex.amount_rub && ex.currency.toUpperCase() !== "RUB" ? ` (≈ ${ex.amount_rub} RUB)` : ""}
                     </Typography>
 
                     {/* Upload receipt */}
