@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import serializers
 
 from trips.models import TripMember
 from trips.permissions import IsTripMember
@@ -32,7 +33,7 @@ class TripSettlementViewSet(viewsets.ModelViewSet):
             TripMember.objects.filter(trip_id=trip_id).values_list("user_id", flat=True)
         )
         if from_user.id not in members or to_user.id not in members:
-            raise ValueError("Users must be members of the trip")
+            raise serializers.ValidationError("Users must be members of the trip")
 
         serializer.save(trip_id=trip_id)
 

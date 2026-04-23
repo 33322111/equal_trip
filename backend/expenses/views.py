@@ -38,11 +38,6 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
         return Expense.objects.filter(trip=trip).select_related("created_by", "category").prefetch_related(
             "shares__user").order_by("-created_at")
 
-    def get_serializer_class(self):
-        if self.action == "create":
-            return ExpenseCreateSerializer
-        return ExpenseSerializer
-
     def get_object(self):
         return super().get_object()
 
@@ -62,8 +57,6 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
         return Response(ExpenseSerializer(expense).data, status=status.HTTP_201_CREATED)
 
     def get_serializer_class(self):
-        if self.action == "create":
-            return ExpenseCreateSerializer
         if self.action in ("update", "partial_update"):
             return ExpenseUpdateSerializer
         return ExpenseSerializer

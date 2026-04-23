@@ -2,6 +2,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from .models import Trip, TripMember, TripInvite
@@ -34,7 +35,7 @@ class TripViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         # удалять может только owner
         if not TripMember.objects.filter(trip=instance, user=self.request.user, role=TripMember.Role.OWNER).exists():
-            raise permissions.PermissionDenied("Only owner can delete trip.")
+            raise PermissionDenied("Only owner can delete trip.")
         instance.delete()
 
     def get_permissions(self):
@@ -65,13 +66,12 @@ class TripViewSet(viewsets.ModelViewSet):
 
         member = get_object_or_404(TripMember.objects.select_related("user"), trip=trip, id=member_id)
 
+        if member.user_id == request.user.id:
+            return Response({"detail": "Cannot remove yourself."}, status=status.HTTP_400_BAD_REQUEST)
+
         # нельзя удалять owner'а
         if member.role == TripMember.Role.OWNER:
             return Response({"detail": "Cannot remove owner."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # нельзя удалять себя
-        if member.user_id == request.user.id:
-            return Response({"detail": "Cannot remove yourself."}, status=status.HTTP_400_BAD_REQUEST)
 
         member.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -80,10 +80,7 @@ class TripViewSet(viewsets.ModelViewSet):
     def leave(self, request, pk=None):
         trip = self.get_object()
 
-        try:
-            membership = TripMember.objects.get(trip=trip, user=request.user)
-        except TripMember.DoesNotExist:
-            return Response({"detail": "You are not a member of this trip."}, status=status.HTTP_403_FORBIDDEN)
+        membership = TripMember.objects.get(trip=trip, user=request.user)
 
         if membership.role == TripMember.Role.OWNER:
             return Response(
