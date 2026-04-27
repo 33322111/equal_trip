@@ -207,7 +207,6 @@ def export_trip_pdf(trip: Trip):
         amount_rub = _to_decimal(e.amount_rub)
         total_rub += amount_rub
         by_category[e.category.name if e.category else "Без категории"] += amount_rub
-        by_user[e.created_by.username] += amount_rub
 
         shares = list(e.shares.all())
         weights = [_to_decimal(s.weight) for s in shares]
@@ -215,6 +214,12 @@ def export_trip_pdf(trip: Trip):
         if shares:
             split_mode = "custom" if any(w != weights[0] for w in weights[1:]) else "equal"
         total_weight = sum(weights, Decimal("0"))
+        if total_weight > 0:
+            for s, weight in zip(shares, weights):
+                by_user[s.user.username] += amount_rub * weight / total_weight
+        else:
+            by_user[e.created_by.username] += amount_rub
+
         for s in shares:
             weight = _to_decimal(s.weight)
             if total_weight > 0:
@@ -290,7 +295,7 @@ def export_trip_pdf(trip: Trip):
     story.append(Spacer(1, 3 * mm))
 
     user_chart = _build_horizontal_bar_chart(
-        "Расходы по участникам (RUB)",
+        "Расходы по участникам после деления (RUB)",
         sorted(by_user.items(), key=lambda x: x[1], reverse=True),
         doc.width,
         135,

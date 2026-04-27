@@ -154,6 +154,17 @@ class TripsApiTests(APITestCase):
         owner_leave = self.client.post(f"/api/trips/{self.trip.id}/leave/", {}, format="json")
         self.assertEqual(owner_leave.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_delete_trip_only_owner(self):
+        self.auth(self.member)
+        member_delete = self.client.delete(f"/api/trips/{self.trip.id}/")
+        self.assertEqual(member_delete.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Trip.objects.filter(id=self.trip.id).exists())
+
+        self.auth(self.owner)
+        owner_delete = self.client.delete(f"/api/trips/{self.trip.id}/")
+        self.assertEqual(owner_delete.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Trip.objects.filter(id=self.trip.id).exists())
+
     def test_invite_info_and_accept_flow(self):
         self.auth(self.owner)
         invite_response = self.client.post(f"/api/trips/{self.trip.id}/create_invite/", {}, format="json")
@@ -207,6 +218,9 @@ class TripsApiTests(APITestCase):
         self.assertEqual(Decimal(stats_response.data["total"]), Decimal("120.00"))
         by_category = {row["category"]: Decimal(row["amount"]) for row in stats_response.data["by_category"]}
         self.assertEqual(by_category["Food"], Decimal("120.00"))
+        by_user = {row["username"]: Decimal(row["amount"]) for row in stats_response.data["by_user"]}
+        self.assertEqual(by_user["owner"], Decimal("60.00"))
+        self.assertEqual(by_user["member"], Decimal("60.00"))
 
     def test_retrieve_trip_returns_members(self):
         self.auth(self.owner)

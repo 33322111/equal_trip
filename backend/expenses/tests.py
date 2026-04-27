@@ -1,5 +1,7 @@
+import csv
 from datetime import date, timedelta
 from decimal import Decimal
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -486,6 +488,39 @@ class ExpenseUnitLogicTests(TestCase):
         self.assertEqual(csv_to_decimal(None), Decimal("0"))
         self.assertEqual(_split_mode([]), "none")
         self.assertIn("0.00 RUB", text)
+
+    def test_export_csv_totals_by_user_use_split_amounts(self):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="CSV split totals",
+            amount=Decimal("90.00"),
+            currency="RUB",
+            amount_rub=Decimal("90.00"),
+            fx_rate=Decimal("1.000000"),
+            category=self.category,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("30.00"))
+        ExpenseShare.objects.create(expense=expense, user=self.member, weight=Decimal("60.00"))
+
+        response = export_trip_csv(self.trip)
+        rows = list(csv.reader(StringIO(response.content.decode("utf-8-sig"))))
+
+        start_index = next(
+            i for i, row in enumerate(rows)
+            if row and row[0] == "Totals by participant after split (RUB)"
+        )
+        self.assertEqual(rows[start_index + 1], ["Username", "Amount RUB"])
+
+        section_rows = []
+        i = start_index + 2
+        while i < len(rows) and any(cell.strip() for cell in rows[i]):
+            section_rows.append(rows[i])
+            i += 1
+
+        totals = {row[0]: Decimal(row[1]) for row in section_rows}
+        self.assertEqual(totals[self.owner.username], Decimal("30.00"))
+        self.assertEqual(totals[self.member.username], Decimal("60.00"))
 
 
 class ExpenseFxTests(TestCase):

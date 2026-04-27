@@ -61,6 +61,24 @@ class ProfileSerializer(serializers.ModelSerializer):
         fields = ("id", "username", "email", "avatar")
         read_only_fields = ("id",)
 
+    def validate_username(self, value):
+        queryset = User.objects.filter(username__iexact=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("Пользователь с таким никнеймом уже существует.")
+        return value
+
+    def validate_email(self, value):
+        if not value:
+            return value
+        queryset = User.objects.filter(email__iexact=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("Пользователь с таким email уже существует.")
+        return value
+
 
 class UserSearchSerializer(serializers.ModelSerializer):
     class Meta:

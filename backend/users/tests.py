@@ -79,6 +79,40 @@ class UsersApiTests(APITestCase):
         self.assertEqual(patch_response.data["username"], "ivan_updated")
         self.assertEqual(patch_response.data["email"], "ivan_updated@example.com")
 
+    def test_profile_patch_rejects_existing_username(self):
+        User.objects.create_user(
+            username="taken_name",
+            email="taken_name@example.com",
+            password="StrongPass1!",
+        )
+        self.client.force_authenticate(self.user)
+
+        response = self.client.patch(
+            "/api/profile/",
+            {"username": "taken_name"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("username", response.data)
+
+    def test_profile_patch_rejects_existing_email(self):
+        User.objects.create_user(
+            username="taken_email_user",
+            email="taken_email@example.com",
+            password="StrongPass1!",
+        )
+        self.client.force_authenticate(self.user)
+
+        response = self.client.patch(
+            "/api/profile/",
+            {"email": "taken_email@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)
+
     def test_user_search_requires_auth(self):
         response = self.client.get("/api/users/search/?q=iv")
         self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))

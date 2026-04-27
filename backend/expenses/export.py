@@ -56,6 +56,14 @@ def export_trip_csv(trip: Trip):
         amount_rub = _to_decimal(e.amount_rub)
         total_rub += amount_rub
         by_category[e.category.name if e.category else "Без категории"] += amount_rub
+        shares = list(e.shares.all())
+        if shares:
+            total_weight = sum((_to_decimal(s.weight) for s in shares), Decimal("0"))
+            if total_weight > 0:
+                for s in shares:
+                    by_user[s.user.username] += amount_rub * _to_decimal(s.weight) / total_weight
+                continue
+
         by_user[e.created_by.username] += amount_rub
 
     writer.writerow(["EqualTrip Trip Report"])
@@ -168,7 +176,7 @@ def export_trip_csv(trip: Trip):
         writer.writerow([category, str(_q2(value))])
 
     writer.writerow([])
-    writer.writerow(["Totals by payer (RUB)"])
+    writer.writerow(["Totals by participant after split (RUB)"])
     writer.writerow(["Username", "Amount RUB"])
     for username, value in sorted(by_user.items(), key=lambda x: x[1], reverse=True):
         writer.writerow([username, str(_q2(value))])
