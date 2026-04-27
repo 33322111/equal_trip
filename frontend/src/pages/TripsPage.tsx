@@ -82,6 +82,7 @@ function PageSection({
 export default function TripsPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState<string>(""); // yyyy-mm-dd
   const [endDate, setEndDate] = useState<string>(""); // yyyy-mm-dd
   const [isCreating, setIsCreating] = useState(false);
@@ -135,11 +136,13 @@ export default function TripsPage() {
     try {
       await createTrip({
         title: title.trim(),
+        description: description.trim() || "",
         start_date: startDate,
         end_date: endDate,
       });
 
       setTitle("");
+      setDescription("");
       setStartDate("");
       setEndDate("");
       await load();
@@ -350,6 +353,16 @@ export default function TripsPage() {
               onChange={(e) => setTitle(e.target.value)}
               fullWidth
               sx={{ flex: "1 1 320px" }}
+            />
+
+            <TextField
+              label="Описание"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              multiline
+              minRows={2}
+              fullWidth
+              sx={{ flex: "1 1 100%" }}
             />
 
             <TextField

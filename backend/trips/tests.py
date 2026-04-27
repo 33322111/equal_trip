@@ -154,6 +154,26 @@ class TripsApiTests(APITestCase):
         owner_leave = self.client.post(f"/api/trips/{self.trip.id}/leave/", {}, format="json")
         self.assertEqual(owner_leave.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_update_trip_only_owner(self):
+        self.auth(self.member)
+        member_update = self.client.patch(
+            f"/api/trips/{self.trip.id}/",
+            {"description": "Member should not edit"},
+            format="json",
+        )
+        self.assertEqual(member_update.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.auth(self.owner)
+        owner_update = self.client.patch(
+            f"/api/trips/{self.trip.id}/",
+            {"description": "Updated by owner"},
+            format="json",
+        )
+        self.assertEqual(owner_update.status_code, status.HTTP_200_OK)
+
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.description, "Updated by owner")
+
     def test_delete_trip_only_owner(self):
         self.auth(self.member)
         member_delete = self.client.delete(f"/api/trips/{self.trip.id}/")
@@ -221,6 +241,29 @@ class TripsApiTests(APITestCase):
         by_user = {row["username"]: Decimal(row["amount"]) for row in stats_response.data["by_user"]}
         self.assertEqual(by_user["owner"], Decimal("60.00"))
         self.assertEqual(by_user["member"], Decimal("60.00"))
+
+    def test_stats_falls_back_to_creator_when_share_weights_are_zero(self):
+        category = ExpenseCategory.objects.create(name="Transport")
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Taxi",
+            amount=Decimal("80.00"),
+            currency="RUB",
+            amount_rub=Decimal("80.00"),
+            fx_rate=Decimal("1.000000"),
+            category=category,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("0.00"))
+        ExpenseShare.objects.create(expense=expense, user=self.member, weight=Decimal("0.00"))
+
+        self.auth(self.owner)
+        stats_response = self.client.get(f"/api/trips/{self.trip.id}/stats/")
+        self.assertEqual(stats_response.status_code, status.HTTP_200_OK)
+
+        by_user = {row["username"]: Decimal(row["amount"]) for row in stats_response.data["by_user"]}
+        self.assertEqual(by_user["owner"], Decimal("80.00"))
+        self.assertNotIn("member", by_user)
 
     def test_retrieve_trip_returns_members(self):
         self.auth(self.owner)

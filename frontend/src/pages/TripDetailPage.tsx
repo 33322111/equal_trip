@@ -183,6 +183,11 @@ export default function TripDetailPage() {
   const [editTitle, setEditTitle] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
 
+  // Edit description dialog
+  const [editDescriptionOpen, setEditDescriptionOpen] = useState(false);
+  const [editDescription, setEditDescription] = useState("");
+  const [savingDescription, setSavingDescription] = useState(false);
+
   // Invite by search
   const [userQuery, setUserQuery] = useState("");
   const [userOptions, setUserOptions] = useState<UserShort[]>([]);
@@ -473,6 +478,27 @@ export default function TripDetailPage() {
     }
   };
 
+  // Edit description
+  const openEditDescription = () => {
+    if (!trip) return;
+    setEditDescription(trip.description ?? "");
+    setEditDescriptionOpen(true);
+  };
+
+  const saveDescription = async () => {
+    if (!isOwner) return;
+    setSavingDescription(true);
+    try {
+      const updated = await updateTrip(tripId, { description: editDescription.trim() || "" });
+      setTrip((prev) => (prev ? { ...prev, description: updated.description } : prev));
+      setEditDescriptionOpen(false);
+    } catch {
+      setError("Не удалось обновить описание поездки.");
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
   if (!trip) {
     return (
       <Box sx={{ minHeight: "100%", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
@@ -492,6 +518,8 @@ export default function TripDetailPage() {
       </Box>
     );
   }
+
+  const hasTripDescription = Boolean(trip.description?.trim());
 
   return (
     <>
@@ -537,6 +565,46 @@ export default function TripDetailPage() {
                   {formatTripDates(trip.start_date, trip.end_date)}
                 </Typography>
               ) : null}
+
+              {hasTripDescription ? (
+                <Stack direction="row" spacing={0.5} alignItems="flex-start" sx={{ mt: 1, minWidth: 0 }}>
+                  <Typography
+                    variant="body1"
+                    color="text.secondary"
+                    sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                  >
+                    {trip.description}
+                  </Typography>
+
+                  {isOwner ? (
+                    <IconButton size="small" onClick={openEditDescription} aria-label="edit-description">
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  ) : null}
+                </Stack>
+              ) : (
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1}
+                  alignItems={{ xs: "flex-start", sm: "center" }}
+                  sx={{ mt: 1, minWidth: 0 }}
+                >
+                  <Typography variant="body1" color="text.secondary" sx={{ wordBreak: "break-word" }}>
+                    Описание поездки не добавлено
+                  </Typography>
+
+                  {isOwner ? (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={openEditDescription}
+                      sx={{ px: 0, minWidth: 0 }}
+                    >
+                      Добавить описание
+                    </Button>
+                  ) : null}
+                </Stack>
+              )}
             </Box>
 
             {isOwner ? (
@@ -816,6 +884,30 @@ export default function TripDetailPage() {
         <DialogActions>
           <Button onClick={() => setEditTitleOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={saveTitle} disabled={savingTitle}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог редактирования описания */}
+      <Dialog open={editDescriptionOpen} onClose={() => setEditDescriptionOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Изменить описание поездки</DialogTitle>
+
+        <DialogContent dividers>
+          <TextField
+            label="Описание (необязательно)"
+            fullWidth
+            autoFocus
+            multiline
+            minRows={4}
+            value={editDescription}
+            onChange={(e) => setEditDescription(e.target.value)}
+          />
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setEditDescriptionOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={saveDescription} disabled={savingDescription}>
             Сохранить
           </Button>
         </DialogActions>

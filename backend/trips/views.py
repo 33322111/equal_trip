@@ -21,6 +21,13 @@ User = get_user_model()
 class TripViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
+    def _is_owner(self, trip: Trip) -> bool:
+        return TripMember.objects.filter(
+            trip=trip,
+            user=self.request.user,
+            role=TripMember.Role.OWNER,
+        ).exists()
+
     def get_queryset(self):
         # Все поездки, где пользователь участник
         return Trip.objects.filter(memberships__user=self.request.user).distinct().order_by("-created_at")
@@ -34,9 +41,15 @@ class TripViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         # удалять может только owner
-        if not TripMember.objects.filter(trip=instance, user=self.request.user, role=TripMember.Role.OWNER).exists():
+        if not self._is_owner(instance):
             raise PermissionDenied("Only owner can delete trip.")
         instance.delete()
+
+    def perform_update(self, serializer):
+        trip = serializer.instance
+        if not self._is_owner(trip):
+            raise PermissionDenied("Only owner can edit trip.")
+        serializer.save()
 
     def get_permissions(self):
         if self.action in ("retrieve", "update", "partial_update", "leave"):
