@@ -76,6 +76,10 @@ export async function updateTrip(
   return res.data;
 }
 
+export async function deleteTrip(id: number): Promise<void> {
+  await api.delete(`/trips/${id}/`);
+}
+
 export async function removeTripMember(tripId: number, memberId: number): Promise<void> {
   await api.delete(`/trips/${tripId}/members/${memberId}/`);
 }

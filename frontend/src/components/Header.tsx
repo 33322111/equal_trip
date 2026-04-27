@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   AppBar,
   Toolbar,
-  Typography,
   Box,
   Button,
   IconButton,
@@ -73,11 +72,10 @@ export default function Header() {
         sx={{
           flexWrap: { xs: "wrap", sm: "nowrap" },
           gap: { xs: 1, sm: 0 },
-          py: { xs: 0.75, sm: 0 },
+          py: { xs: 0.5, sm: 0 },
         }}
       >
-        <Typography
-          variant="h6"
+        <Box
           component={Link}
           to="/"
           sx={{
@@ -85,12 +83,24 @@ export default function Header() {
             textDecoration: "none",
             color: "inherit",
             width: { xs: "100%", sm: "auto" },
-            fontSize: { xs: "1.1rem", sm: "1.25rem" },
-            lineHeight: 1.2,
+            display: "flex",
+            alignItems: "center",
+            minHeight: { xs: 40, sm: 58 },
           }}
         >
-          EqualTrip
-        </Typography>
+          <Box
+            component="img"
+            src="/logo.png"
+            alt="EqualTrip"
+            sx={{
+              height: { xs: 38, sm: 56 },
+              width: "auto",
+              maxWidth: { xs: "100%", sm: 500 },
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
+        </Box>
 
         <Box sx={{ width: { xs: "100%", sm: "auto" }, display: "flex", justifyContent: "flex-end" }}>
           {!isAuthenticated ? (

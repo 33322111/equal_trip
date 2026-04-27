@@ -37,9 +37,6 @@ export default function TripMap({ expenses }: Props) {
 
   return (
     <Paper sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom>
-        Карта поездки
-      </Typography>
 
       {!points.length ? <Typography color="text.secondary">Расходы с координатами пока не добавлены.</Typography> : null}
 

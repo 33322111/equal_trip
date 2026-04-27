@@ -57,7 +57,7 @@ export default function TripStatsView({ stats }: { stats: TripStats }) {
       </ResponsiveContainer>
 
       <Typography variant="subtitle1" sx={{ mt: 3 }}>
-        Кто сколько потратил
+        Кто сколько потратил после деления
       </Typography>
 
       <ResponsiveContainer width="100%" height={250}>

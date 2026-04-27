@@ -295,7 +295,7 @@ export default function TripsPage() {
               ) : null}
 
               <Typography variant="body2" color="text.secondary">
-                Owner: {t.owner.username}
+                Владелец: {t.owner.username}
               </Typography>
             </Paper>
           ))}

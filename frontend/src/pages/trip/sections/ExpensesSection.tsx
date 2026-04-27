@@ -148,6 +148,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const [expenseSortMode, setExpenseSortMode] = useState<ExpenseSortMode>("created_desc");
   const [formLat, setFormLat] = useState<number | null>(null);
   const [formLng, setFormLng] = useState<number | null>(null);
+  const [formReceiptFile, setFormReceiptFile] = useState<File | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(DEFAULT_MAP_CENTER);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expensePage, setExpensePage] = useState(0);
@@ -327,7 +328,16 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
         payload.lng = formLng;
       }
 
-      await createExpense(tripId, payload);
+      const created = await createExpense(tripId, payload);
+      let receiptUploadFailed = false;
+
+      if (formReceiptFile) {
+        try {
+          await uploadExpenseReceipt(tripId, created.id, formReceiptFile);
+        } catch {
+          receiptUploadFailed = true;
+        }
+      }
 
       setFormTitle("");
       setFormAmount("");
@@ -338,10 +348,14 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
       setFormShareAmounts({});
       setFormLat(null);
       setFormLng(null);
+      setFormReceiptFile(null);
       setMapCenter(DEFAULT_MAP_CENTER);
 
       await loadLocal();
       if (onAfterChange) await onAfterChange();
+      if (receiptUploadFailed) {
+        onError("Расход добавлен, но чек загрузить не удалось.");
+      }
     } catch (e: any) {
       const data = e?.response?.data;
       const message =
@@ -573,6 +587,47 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
             >
               Добавить
             </Button>
+          </Stack>
+
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            alignItems={{ xs: "stretch", sm: "center" }}
+            sx={{ mt: 1.5 }}
+          >
+            <Button
+              component="label"
+              variant="outlined"
+              startIcon={<AttachFileIcon />}
+              sx={{ width: { xs: "100%", sm: "auto" } }}
+            >
+              {formReceiptFile ? "Чек выбран" : "Прикрепить чек"}
+              <input
+                type="file"
+                hidden
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setFormReceiptFile(file);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </Button>
+
+            {formReceiptFile ? (
+              <Button
+                variant="text"
+                color="inherit"
+                onClick={() => setFormReceiptFile(null)}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
+              >
+                Убрать чек
+              </Button>
+            ) : null}
+
+            <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
+              {formReceiptFile ? formReceiptFile.name : "Чек не выбран"}
+            </Typography>
           </Stack>
 
           <Box sx={{ mt: 2 }}>

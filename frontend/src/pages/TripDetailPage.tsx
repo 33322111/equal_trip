@@ -32,6 +32,7 @@ import {
   getTrip,
   TripDetail,
   updateTrip,
+  deleteTrip,
   removeTripMember,
   leaveTrip,
   addTripMember,
@@ -288,6 +289,18 @@ export default function TripDetailPage() {
     }
   };
 
+  const onDeleteTrip = async () => {
+    if (!window.confirm("Удалить поездку? Это действие нельзя отменить.")) return;
+    try {
+      setError(null);
+      await deleteTrip(tripId);
+      navigate("/trips");
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || "Не удалось удалить поездку.";
+      setError(String(msg));
+    }
+  };
+
   // Remove member
   const onRemoveMember = async (memberId: number, label: string) => {
     if (!window.confirm(`Удалить участника ${label} из поездки?`)) return;
@@ -527,14 +540,25 @@ export default function TripDetailPage() {
             </Box>
 
             {isOwner ? (
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={openEditDates}
-                sx={{ width: { xs: "100%", sm: "auto" } }}
-              >
-                Редактировать даты
-              </Button>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={openEditDates}
+                  sx={{ width: { xs: "100%", sm: "auto" } }}
+                >
+                  Редактировать даты
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  onClick={onDeleteTrip}
+                  sx={{ width: { xs: "100%", sm: "auto" } }}
+                >
+                  Удалить поездку
+                </Button>
+              </Stack>
             ) : (
               <Button
                 variant="outlined"

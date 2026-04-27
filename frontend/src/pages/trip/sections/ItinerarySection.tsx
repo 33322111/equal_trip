@@ -419,7 +419,7 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
                     Для этой даты ещё нет дня в планировщике.
                   </Alert>
                   <Button variant="contained" onClick={createDayForSelected} sx={{ width: { xs: "100%", sm: "auto" } }}>
-                    Создать день
+                    Добавить день
                   </Button>
                 </Box>
               ) : null}
