@@ -33,7 +33,6 @@ export default function ResetPasswordPage() {
     try {
       await confirmPasswordReset(token, password);
       setStatus("success");
-      // на MVP просто отправим на login
       setTimeout(() => navigate("/login", { replace: true }), 800);
     } catch (err: any) {
       setError("Не удалось сбросить пароль. Возможно ссылка устарела.");

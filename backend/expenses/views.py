@@ -56,6 +56,25 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
 
         return Response(ExpenseSerializer(expense).data, status=status.HTTP_201_CREATED)
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        trip = self.get_trip()
+        self.check_object_permissions(request, trip)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, "_prefetched_objects_cache", None):
+            instance._prefetched_objects_cache = {}
+
+        output = ExpenseSerializer(instance, context=self.get_serializer_context())
+        return Response(output.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
+
     def get_serializer_class(self):
         if self.action in ("update", "partial_update"):
             return ExpenseUpdateSerializer

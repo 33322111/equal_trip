@@ -14,7 +14,7 @@ type Props = {
   trip: TripDetail;
   categories: Category[];
   expense: Expense | null;
-  onSaved: () => Promise<void>;
+  onSaved: (expense: Expense) => Promise<void> | void;
 };
 
 type SplitMode = "equal" | "custom";
@@ -200,10 +200,10 @@ export default function ExpenseEditDialog({
         payload.share_user_ids = selectedUserIds;
       }
 
-      await updateExpense(tripId, expense.id, {
+      const updated = await updateExpense(tripId, expense.id, {
         ...payload,
       });
-      await onSaved();
+      await onSaved(updated);
       onClose();
     } catch (e: any) {
       const data = e?.response?.data;

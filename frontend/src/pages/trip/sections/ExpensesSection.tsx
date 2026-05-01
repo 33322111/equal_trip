@@ -66,7 +66,8 @@ type ExpenseSortMode =
 type Props = {
   tripId: number;
   trip: TripDetail;
-  onAfterChange?: () => Promise<void> | void; // чтобы родитель мог reload balance/stats/etc.
+  onAfterChange?: () => Promise<void> | void;
+  onExpensesChange?: (expenses: Expense[]) => void;
   onError: (msg: string) => void;
 };
 
@@ -132,7 +133,18 @@ function toSortAmountRub(ex: Expense) {
   return Number.isFinite(base) ? base : 0;
 }
 
-export default function ExpensesSection({ tripId, trip, onAfterChange, onError }: Props) {
+function mergeExpense(prevExpense: Expense, nextExpense: Expense) {
+  return {
+    ...prevExpense,
+    ...nextExpense,
+    created_by: nextExpense.created_by ?? prevExpense.created_by,
+    category: nextExpense.category === undefined ? prevExpense.category : nextExpense.category,
+    shares: nextExpense.shares ?? prevExpense.shares,
+    receipt: nextExpense.receipt === undefined ? prevExpense.receipt : nextExpense.receipt,
+  };
+}
+
+export default function ExpensesSection({ tripId, trip, onAfterChange, onExpensesChange, onError }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -165,6 +177,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [receiptTitle, setReceiptTitle] = useState<string>("");
   const [receiptExpenseId, setReceiptExpenseId] = useState<number | null>(null);
+  const [uploadingReceiptIds, setUploadingReceiptIds] = useState<number[]>([]);
   const theme = useTheme();
   const isXs = useMediaQuery(theme.breakpoints.down("sm"));
   const isSm = useMediaQuery(theme.breakpoints.between("sm", "md"));
@@ -227,19 +240,14 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     });
   }, [formShareUserIds]);
 
-  const loadLocal = async () => {
-    try {
-      const [cats, exp] = await Promise.all([listCategories(), listExpenses(tripId)]);
-      setCategories(cats);
-      setExpenses(exp);
-    } catch {
-      onError("Не удалось загрузить расходы/категории.");
-    }
-  };
-
   useEffect(() => {
     if (!Number.isFinite(tripId)) return;
-    loadLocal();
+    Promise.all([listCategories(), listExpenses(tripId)])
+      .then(([cats, exp]) => {
+        setCategories(cats);
+        replaceExpenses(exp);
+      })
+      .catch(() => onError("Не удалось загрузить расходы/категории."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
@@ -249,6 +257,42 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
       .catch(() => onError("Не удалось загрузить список валют"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const refreshRelatedDataInBackground = () => {
+    if (!onAfterChange) return;
+    void Promise.resolve(onAfterChange()).catch(() => {
+      onError("Не удалось обновить баланс и статистику после изменения расхода.");
+    });
+  };
+
+  const replaceExpenses = (nextExpenses: Expense[]) => {
+    setExpenses(nextExpenses);
+    onExpensesChange?.(nextExpenses);
+  };
+
+  const updateExpenses = (updater: (prev: Expense[]) => Expense[]) => {
+    setExpenses((prev) => {
+      const next = updater(prev);
+      onExpensesChange?.(next);
+      return next;
+    });
+  };
+
+  const mergeExpenseIntoList = (nextExpense: Expense) => {
+    setSelectedExpense((prev) => (prev && prev.id === nextExpense.id ? mergeExpense(prev, nextExpense) : prev));
+    setDetailsExpense((prev) => (prev && prev.id === nextExpense.id ? mergeExpense(prev, nextExpense) : prev));
+    updateExpenses((prev) =>
+      prev.map((expense) => (expense.id === nextExpense.id ? mergeExpense(expense, nextExpense) : expense))
+    );
+  };
+
+  const markReceiptUploading = (expenseId: number) => {
+    setUploadingReceiptIds((prev) => (prev.includes(expenseId) ? prev : [...prev, expenseId]));
+  };
+
+  const unmarkReceiptUploading = (expenseId: number) => {
+    setUploadingReceiptIds((prev) => prev.filter((id) => id !== expenseId));
+  };
 
   const onAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,16 +372,8 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
         payload.lng = formLng;
       }
 
-      const created = await createExpense(tripId, payload);
-      let receiptUploadFailed = false;
-
-      if (formReceiptFile) {
-        try {
-          await uploadExpenseReceipt(tripId, created.id, formReceiptFile);
-        } catch {
-          receiptUploadFailed = true;
-        }
-      }
+      const receiptFile = formReceiptFile;
+      const nextExpense = await createExpense(tripId, payload);
 
       setFormTitle("");
       setFormAmount("");
@@ -351,10 +387,20 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
       setFormReceiptFile(null);
       setMapCenter(DEFAULT_MAP_CENTER);
 
-      await loadLocal();
-      if (onAfterChange) await onAfterChange();
-      if (receiptUploadFailed) {
-        onError("Расход добавлен, но чек загрузить не удалось.");
+      updateExpenses((prev) => [nextExpense, ...prev]);
+      refreshRelatedDataInBackground();
+
+      if (receiptFile) {
+        markReceiptUploading(nextExpense.id);
+        void uploadExpenseReceipt(tripId, nextExpense.id, receiptFile)
+          .then((expenseWithReceipt) => {
+            mergeExpenseIntoList(expenseWithReceipt);
+            unmarkReceiptUploading(nextExpense.id);
+          })
+          .catch(() => {
+            unmarkReceiptUploading(nextExpense.id);
+            onError("Расход добавлен, но чек загрузить не удалось.");
+          });
       }
     } catch (e: any) {
       const data = e?.response?.data;
@@ -379,8 +425,8 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     if (!window.confirm("Удалить расход?")) return;
     try {
       await deleteExpense(tripId, expenseId);
-      await loadLocal();
-      if (onAfterChange) await onAfterChange();
+      updateExpenses((prev) => prev.filter((expense) => expense.id !== expenseId));
+      refreshRelatedDataInBackground();
     } catch {
       onError("Не удалось удалить расход.");
     }
@@ -407,13 +453,14 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
   };
 
   const onUploadReceipt = async (ex: Expense, file: File, inputEl: HTMLInputElement) => {
+    markReceiptUploading(ex.id);
     try {
-      await uploadExpenseReceipt(tripId, ex.id, file);
-      await loadLocal();
-      if (onAfterChange) await onAfterChange();
+      const updatedExpense = await uploadExpenseReceipt(tripId, ex.id, file);
+      mergeExpenseIntoList(updatedExpense);
     } catch {
       onError("Не удалось загрузить чек.");
     } finally {
+      unmarkReceiptUploading(ex.id);
       // чтобы можно было выбрать тот же файл повторно
       inputEl.value = "";
     }
@@ -439,10 +486,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
     if (!window.confirm("Удалить чек у расхода?")) return;
 
     try {
-      await deleteExpenseReceipt(tripId, receiptExpenseId);
+      const updatedExpense = await deleteExpenseReceipt(tripId, receiptExpenseId);
+      mergeExpenseIntoList(updatedExpense);
       onCloseReceipt();
-      await loadLocal();
-      if (onAfterChange) await onAfterChange();
     } catch {
       onError("Не удалось удалить чек.");
     }
@@ -528,13 +574,26 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
 
         {/* Форма добавления */}
         <Box component="form" onSubmit={onAddExpense} sx={{ mb: 2 }}>
-          <Stack direction={{ xs: "column", lg: "row" }} spacing={2}>
+          <Box
+            sx={{
+              display: "grid",
+              gap: 2,
+              gridTemplateColumns: {
+                xs: "minmax(0, 1fr)",
+                sm: "repeat(2, minmax(0, 1fr))",
+                lg: "minmax(0, 1.4fr) minmax(0, 1fr) minmax(240px, 1fr)",
+                xl: "minmax(0, 1.4fr) minmax(0, 1fr) minmax(260px, 1fr) minmax(180px, 0.9fr) auto",
+              },
+              alignItems: "start",
+            }}
+          >
             <TextField
               label="Название"
               value={formTitle}
               onChange={(e) => setFormTitle(e.target.value)}
               fullWidth
               required
+              sx={{ minWidth: 0 }}
             />
 
             <TextField
@@ -546,11 +605,12 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
               InputProps={{
                 endAdornment: <InputAdornment position="end">{formCurrency}</InputAdornment>,
               }}
+              sx={{ minWidth: 0 }}
             />
 
             <Autocomplete
               options={currencies}
-              sx={{ width: { xs: "100%", sm: 260, lg: 300 } }}
+              sx={{ width: "100%", minWidth: 0 }}
               autoHighlight
               value={currencies.find((c) => c.code === formCurrency) ?? null}
               onChange={(_, newValue) => setFormCurrency(newValue?.code ?? "RUB")}
@@ -569,7 +629,16 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                 const v = e.target.value;
                 setFormCategoryId(v === "" ? "" : Number(v));
               }}
-              sx={{ width: { xs: "100%", sm: 220 } }}
+              sx={{
+                width: "100%",
+                minWidth: 0,
+                gridColumn: {
+                  xs: "auto",
+                  sm: "span 2",
+                  lg: "span 1",
+                  xl: "span 1",
+                },
+              }}
             >
               <MenuItem value="">Без категории</MenuItem>
               {categories.map((c) => (
@@ -578,16 +647,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                 </MenuItem>
               ))}
             </TextField>
-
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={isSubmitting}
-              sx={{ width: { xs: "100%", lg: "auto" } }}
-            >
-              Добавить
-            </Button>
-          </Stack>
+          </Box>
 
           <Stack
             direction={{ xs: "column", sm: "row" }}
@@ -616,10 +676,14 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
 
             {formReceiptFile ? (
               <Button
-                variant="text"
+                variant="outlined"
                 color="inherit"
                 onClick={() => setFormReceiptFile(null)}
-                sx={{ width: { xs: "100%", sm: "auto" } }}
+                sx={{
+                  width: { xs: "100%", sm: "auto" },
+                  borderColor: "divider",
+                  whiteSpace: "nowrap",
+                }}
               >
                 Убрать чек
               </Button>
@@ -726,7 +790,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
               />
             </Suspense>
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 1.5 }}>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mt: 1.5 }}>
               <TextField
                 label="Широта"
                 value={formLat ?? ""}
@@ -747,11 +811,37 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                   setFormLng(null);
                   setMapCenter(DEFAULT_MAP_CENTER);
                 }}
-                sx={{ width: { xs: "100%", sm: "auto" } }}
+                sx={{
+                  width: { xs: "100%", md: "auto" },
+                  minWidth: { md: 140 },
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
+                  alignSelf: { xs: "stretch", md: "center" },
+                }}
               >
                 Очистить
               </Button>
             </Stack>
+          </Box>
+
+          <Box
+            sx={{
+              mt: 3,
+              display: "flex",
+              justifyContent: { xs: "stretch", sm: "flex-end" },
+            }}
+          >
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={isSubmitting}
+              sx={{
+                width: { xs: "100%", sm: 240 },
+                height: 56,
+              }}
+            >
+              Добавить
+            </Button>
           </Box>
         </Box>
 
@@ -790,6 +880,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
         <Box display="flex" flexDirection="column" gap={1}>
           {visibleExpenses.map((ex) => {
             const receiptAbs = ex.receipt ? toAbsUrl(ex.receipt) : null;
+            const isReceiptUploading = uploadingReceiptIds.includes(ex.id);
 
             return (
               <Paper key={ex.id} variant="outlined" sx={{ p: 1.5 }}>
@@ -841,7 +932,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                     ) : null}
 
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Чек: {ex.receipt ? "прикреплён" : "нет"}
+                      Чек: {isReceiptUploading ? "загружается..." : ex.receipt ? "прикреплён" : "нет"}
                     </Typography>
                   </Box>
 
@@ -852,7 +943,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                     </Typography>
 
                     {/* Upload receipt */}
-                    <IconButton size="small" component="label" aria-label="upload-receipt">
+                    <IconButton size="small" component="label" aria-label="upload-receipt" disabled={isReceiptUploading}>
                       <AttachFileIcon fontSize="small" />
                       <input
                         type="file"
@@ -867,7 +958,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
                     </IconButton>
 
                     {/* View/download receipt */}
-                    {receiptAbs ? (
+                    {receiptAbs && !isReceiptUploading ? (
                       <>
                         <IconButton size="small" onClick={() => onOpenReceipt(ex)} aria-label="view-receipt">
                           <ImageIcon fontSize="small" />
@@ -928,9 +1019,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onError }
         trip={trip}
         categories={categories}
         expense={selectedExpense}
-        onSaved={async () => {
-          await loadLocal();
-          if (onAfterChange) await onAfterChange();
+        onSaved={async (updatedExpense) => {
+          mergeExpenseIntoList(updatedExpense);
+          refreshRelatedDataInBackground();
         }}
       />
 

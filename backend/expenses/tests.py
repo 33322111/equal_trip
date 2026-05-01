@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 from reportlab.lib import colors
@@ -184,6 +185,47 @@ class ExpensesApiTests(APITestCase):
         weights = {s.user_id: s.weight for s in ExpenseShare.objects.filter(expense=expense)}
         self.assertEqual(weights[self.owner.id], Decimal("120.00"))
         self.assertEqual(weights[self.member.id], Decimal("80.00"))
+
+    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    def test_upload_receipt_returns_full_expense_payload(self, _):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Receipt expense",
+            amount=Decimal("100.00"),
+            currency="RUB",
+            amount_rub=Decimal("100.00"),
+            fx_rate=Decimal("1.000000"),
+            category=self.category,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("60.00"))
+        ExpenseShare.objects.create(expense=expense, user=self.member, weight=Decimal("40.00"))
+
+        receipt = SimpleUploadedFile(
+            "receipt.gif",
+            (
+                b"GIF89a\x01\x00\x01\x00\x80\x00\x00"
+                b"\x00\x00\x00\xff\xff\xff!"
+                b"\xf9\x04\x01\x00\x00\x00\x00,"
+                b"\x00\x00\x00\x00\x01\x00\x01\x00"
+                b"\x00\x02\x02D\x01\x00;"
+            ),
+            content_type="image/gif",
+        )
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/expenses/{expense.id}/",
+            {"receipt": receipt},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["receipt"])
+        self.assertEqual(response.data["created_by"]["id"], self.owner.id)
+        self.assertEqual(response.data["category"]["id"], self.category.id)
+        self.assertEqual(len(response.data["shares"]), 2)
+        self.assertEqual(Decimal(response.data["amount_rub"]), Decimal("100.00"))
 
     def test_delete_expense(self):
         expense = Expense.objects.create(
@@ -467,6 +509,42 @@ class ExpenseUnitLogicTests(TestCase):
         self.assertIn(str(self.third.id), data["net"])
         self.assertGreater(len(data["transfers"]), 0)
         self.assertTrue(Expense.objects.filter(id=empty_split_expense.id).exists())
+
+    def test_compute_balance_transfers_are_deterministically_sorted(self):
+        fourth = User.objects.create_user("fourth_logic", "fourth_logic@example.com", "StrongPass1!")
+        TripMember.objects.create(trip=self.trip, user=self.third, role=TripMember.Role.MEMBER)
+        TripMember.objects.create(trip=self.trip, user=fourth, role=TripMember.Role.MEMBER)
+
+        expense_owner = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Owner paid",
+            amount=Decimal("70.00"),
+            currency="RUB",
+            amount_rub=Decimal("70.00"),
+            fx_rate=Decimal("1.000000"),
+        )
+        ExpenseShare.objects.create(expense=expense_owner, user=self.member, weight=Decimal("70.00"))
+
+        expense_third = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.third,
+            title="Third paid",
+            amount=Decimal("30.00"),
+            currency="RUB",
+            amount_rub=Decimal("30.00"),
+            fx_rate=Decimal("1.000000"),
+        )
+        ExpenseShare.objects.create(expense=expense_third, user=fourth, weight=Decimal("30.00"))
+
+        data = compute_balance(self.trip.id)
+        self.assertEqual(
+            data["transfers"],
+            [
+                {"from_user": self.member.id, "to_user": self.owner.id, "amount": "70.00"},
+                {"from_user": fourth.id, "to_user": self.third.id, "amount": "30.00"},
+            ],
+        )
 
     def test_export_csv_helpers_and_zero_weight_shares(self):
         expense = Expense.objects.create(

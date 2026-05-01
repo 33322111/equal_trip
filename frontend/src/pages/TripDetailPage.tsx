@@ -40,15 +40,7 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 
-import {
-  listCategories,
-  listExpenses,
-  getBalance,
-  deleteExpenseReceipt,
-  Category,
-  Expense,
-  BalanceResponse,
-} from "../api/expenses";
+import { listExpenses, getBalance, deleteExpenseReceipt, Expense, BalanceResponse } from "../api/expenses";
 
 import { getTripStats, TripStats } from "../api/stats";
 import TripStatsView from "../components/TripStats";
@@ -158,7 +150,6 @@ export default function TripDetailPage() {
   const [trip, setTrip] = useState<TripDetail | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
-  const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
@@ -254,19 +245,28 @@ export default function TripDetailPage() {
     setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const refreshExpenseRelatedData = async () => {
+    const [bal, st, pays] = await Promise.all([
+      getBalance(tripId),
+      getTripStats(tripId),
+      listSettlements(tripId),
+    ]);
+    setBalance(bal);
+    setStats(st);
+    setSettlements(pays);
+  };
+
   const loadAll = async () => {
     setError(null);
     try {
-      const [tripData, cats, exp, bal, st, pays] = await Promise.all([
+      const [tripData, exp, bal, st, pays] = await Promise.all([
         getTrip(tripId),
-        listCategories(),
         listExpenses(tripId),
         getBalance(tripId),
         getTripStats(tripId),
         listSettlements(tripId),
       ]);
       setTrip(tripData);
-      setCategories(cats);
       setExpenses(exp);
       setBalance(bal);
       setStats(st);
@@ -798,7 +798,8 @@ export default function TripDetailPage() {
             tripId={tripId}
             trip={trip}
             onError={(msg) => setError(msg)}
-            onAfterChange={loadAll}
+            onAfterChange={refreshExpenseRelatedData}
+            onExpensesChange={setExpenses}
           />
         </TripSection>
 

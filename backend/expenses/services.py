@@ -72,6 +72,9 @@ def compute_balance(trip_id: int):
         elif val > 0:
             creditors.append([uid, val])
 
+    debtors.sort(key=lambda row: (-row[1], row[0]))
+    creditors.sort(key=lambda row: (-row[1], row[0]))
+
     transfers = []
     i = j = 0
     while i < len(debtors) and j < len(creditors):

@@ -48,8 +48,6 @@ class TripSettlementViewSet(viewsets.ModelViewSet):
     def confirm(self, request, trip_id=None, pk=None):
         settlement = self.get_object()
 
-        # подтверждать должен получатель или организатор (можно упростить)
-        # MVP: разрешим подтверждать только to_user
         if settlement.to_user_id != request.user.id:
             return Response({"detail": "Only receiver can confirm payment"}, status=403)
 
