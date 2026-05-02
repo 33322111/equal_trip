@@ -53,6 +53,50 @@ class UsersApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("password", response.data)
 
+    def test_register_rejects_existing_email(self):
+        payload = {
+            "username": "newuser2",
+            "email": "ivan@example.com",
+            "password": "Another1!",
+        }
+        response = self.client.post("/api/auth/register/", payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)
+
+    def test_register_rejects_existing_email_case_insensitive(self):
+        payload = {
+            "username": "newuser3",
+            "email": "IVAN@EXAMPLE.COM",
+            "password": "Another1!",
+        }
+        response = self.client.post("/api/auth/register/", payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)
+
+    def test_register_rejects_blank_email(self):
+        payload = {
+            "username": "blankemail",
+            "email": "",
+            "password": "Another1!",
+        }
+        response = self.client.post("/api/auth/register/", payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)
+
+    def test_register_rejects_whitespace_email(self):
+        payload = {
+            "username": "spaceemail",
+            "email": "   ",
+            "password": "Another1!",
+        }
+        response = self.client.post("/api/auth/register/", payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)
+
     def test_login_success_returns_tokens(self):
         payload = {"username": "ivan", "password": "StrongPass1!"}
         response = self.client.post("/api/auth/login/", payload, format="json")
@@ -203,12 +247,12 @@ class UsersApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("password", response.data)
 
-    @patch("users.password_reset_signals.send_mail")
-    def test_password_reset_signal_sends_frontend_link(self, mocked_send_mail):
+    @patch("users.password_reset_signals.send_notification")
+    def test_password_reset_signal_sends_frontend_link(self, mocked_send_notification):
         token = SimpleNamespace(key="abc123", user=self.user)
         password_reset_token_created(sender=None, instance=None, reset_password_token=token)
 
-        self.assertEqual(mocked_send_mail.call_count, 1)
-        kwargs = mocked_send_mail.call_args.kwargs
+        self.assertEqual(mocked_send_notification.call_count, 1)
+        kwargs = mocked_send_notification.call_args.kwargs
         self.assertIn(f"{settings.FRONTEND_URL}/reset-password/abc123", kwargs["message"])
-        self.assertEqual(kwargs["recipient_list"], [self.user.email])
+        self.assertEqual(kwargs["recipients"], [self.user.email])

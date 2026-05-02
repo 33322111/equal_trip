@@ -53,6 +53,11 @@ const RegisterPage: React.FC = () => {
     e.preventDefault();
     setError(null);
 
+    if (!email.trim()) {
+      setError("Email обязателен.");
+      return;
+    }
+
     if (!isPasswordValid) {
       setError('Пароль не соответствует требованиям.');
       return;
@@ -65,7 +70,7 @@ const RegisterPage: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      await register(username, email, password);
+      await register(username, email.trim(), password);
       const pendingInviteToken = localStorage.getItem(PENDING_INVITE_TOKEN_KEY);
       navigate(pendingInviteToken ? `/join/${pendingInviteToken}` : '/trips');
     } catch (err: any) {

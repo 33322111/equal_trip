@@ -10,6 +10,7 @@ User = get_user_model()
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=True, allow_blank=False)
     password = serializers.CharField(write_only=True)
 
     class Meta:
@@ -40,6 +41,15 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(unique_errors)
 
         return value
+
+    def validate_email(self, value):
+        normalized = value.strip()
+        if not normalized:
+            raise serializers.ValidationError("Email обязателен.")
+        queryset = User.objects.filter(email__iexact=normalized)
+        if queryset.exists():
+            raise serializers.ValidationError("Пользователь с таким email уже существует.")
+        return normalized
 
     def create(self, validated_data):
         user = User(
