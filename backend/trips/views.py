@@ -13,6 +13,13 @@ from .serializers import (
 from .permissions import IsTripMember
 from expenses.services import compute_balance
 from expenses.stats import compute_stats
+from notifications.utils import (
+    build_trip_message,
+    format_date_value,
+    safe_send_notification,
+    trip_member_emails,
+    user_emails,
+)
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -49,7 +56,32 @@ class TripViewSet(viewsets.ModelViewSet):
         trip = serializer.instance
         if not self._is_owner(trip):
             raise PermissionDenied("Only owner can edit trip.")
-        serializer.save()
+        before = {
+            "title": trip.title,
+            "description": trip.description,
+            "start_date": trip.start_date,
+            "end_date": trip.end_date,
+        }
+        updated_trip = serializer.save()
+
+        changes = []
+        if before["title"] != updated_trip.title:
+            changes.append(f"Новое название: {updated_trip.title}")
+        if before["description"] != updated_trip.description:
+            changes.append("Описание поездки обновлено.")
+        if before["start_date"] != updated_trip.start_date or before["end_date"] != updated_trip.end_date:
+            changes.append(
+                f"Новые даты: {format_date_value(updated_trip.start_date)} — {format_date_value(updated_trip.end_date)}"
+            )
+
+        if changes:
+            subject = f"[EqualTrip] Поездка «{updated_trip.title}» обновлена"
+            message = build_trip_message(
+                updated_trip,
+                [f"Пользователь {self.request.user.username} обновил параметры поездки.", *changes],
+            )
+            recipients = trip_member_emails(updated_trip, exclude_user_ids=[self.request.user.id])
+            safe_send_notification(subject, message, recipients, "Failed to send trip update notification email")
 
     def get_permissions(self):
         if self.action in ("retrieve", "update", "partial_update", "leave"):
@@ -86,7 +118,38 @@ class TripViewSet(viewsets.ModelViewSet):
         if member.role == TripMember.Role.OWNER:
             return Response({"detail": "Cannot remove owner."}, status=status.HTTP_400_BAD_REQUEST)
 
+        removed_user = member.user
         member.delete()
+
+        subject = f"[EqualTrip] Из поездки «{trip.title}» удалён участник"
+        removed_message = build_trip_message(
+            trip,
+            [
+                f"Пользователь {request.user.username} удалил вас из поездки.",
+                f"Поездка: {trip.title}",
+            ],
+        )
+        safe_send_notification(
+            subject,
+            removed_message,
+            user_emails(removed_user),
+            "Failed to send removed member notification email",
+        )
+
+        remaining_message = build_trip_message(
+            trip,
+            [
+                f"Пользователь {request.user.username} удалил участника из поездки.",
+                f"Удалённый участник: {removed_user.username}",
+            ],
+        )
+        remaining_recipients = trip_member_emails(trip, exclude_user_ids=[request.user.id])
+        safe_send_notification(
+            subject,
+            remaining_message,
+            remaining_recipients,
+            "Failed to send member removal notification email",
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
@@ -101,7 +164,19 @@ class TripViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        leaving_user = request.user
         membership.delete()
+
+        subject = f"[EqualTrip] Участник покинул поездку «{trip.title}»"
+        message = build_trip_message(
+            trip,
+            [
+                f"Пользователь {leaving_user.username} покинул поездку.",
+                f"Пользователь: {leaving_user.username}",
+            ],
+        )
+        recipients = trip_member_emails(trip)
+        safe_send_notification(subject, message, recipients, "Failed to send leave trip notification email")
         return Response({"detail": "Left the trip."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path=r"members/add")
@@ -132,6 +207,35 @@ class TripViewSet(viewsets.ModelViewSet):
         if not created:
             return Response({"detail": "User is already a member."}, status=status.HTTP_400_BAD_REQUEST)
 
+        subject = f"[EqualTrip] Вас добавили в поездку «{trip.title}»"
+        direct_message = build_trip_message(
+            trip,
+            [
+                f"Пользователь {request.user.username} добавил вас в поездку.",
+                f"Организатор: {trip.owner.username}",
+            ],
+        )
+        safe_send_notification(
+            subject,
+            direct_message,
+            user_emails(target_user),
+            "Failed to send member added notification email",
+        )
+
+        members_message = build_trip_message(
+            trip,
+            [
+                f"Пользователь {request.user.username} добавил нового участника.",
+                f"Новый участник: {target_user.username}",
+            ],
+        )
+        recipients = trip_member_emails(trip, exclude_user_ids=[request.user.id, target_user.id])
+        safe_send_notification(
+            f"[EqualTrip] В поездке «{trip.title}» новый участник",
+            members_message,
+            recipients,
+            "Failed to send member joined notification email",
+        )
         return Response({"detail": "Member added."}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"])
@@ -200,11 +304,27 @@ class InviteAcceptViewSet(viewsets.ViewSet):
 
         trip = invite.trip
 
-        TripMember.objects.get_or_create(trip=trip, user=request.user, defaults={"role": TripMember.Role.MEMBER})
+        membership, created = TripMember.objects.get_or_create(
+            trip=trip,
+            user=request.user,
+            defaults={"role": TripMember.Role.MEMBER},
+        )
 
         invite.is_used = True
         invite.used_by = request.user
         invite.used_at = timezone.now()
         invite.save(update_fields=["is_used", "used_by", "used_at"])
+
+        if created and membership.role == TripMember.Role.MEMBER:
+            subject = f"[EqualTrip] В поездке «{trip.title}» новый участник"
+            message = build_trip_message(
+                trip,
+                [
+                    f"Пользователь {request.user.username} присоединился к поездке по приглашению.",
+                    f"Новый участник: {request.user.username}",
+                ],
+            )
+            recipients = trip_member_emails(trip, exclude_user_ids=[request.user.id])
+            safe_send_notification(subject, message, recipients, "Failed to send invite accept notification email")
 
         return Response({"trip_id": trip.id}, status=status.HTTP_200_OK)

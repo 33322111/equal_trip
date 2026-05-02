@@ -2,7 +2,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from payments.models import Settlement
-from .email import send_notification
+from .utils import build_trip_message, format_datetime_value, safe_send_notification, user_emails
 
 
 @receiver(post_save, sender=Settlement)
@@ -10,29 +10,36 @@ def settlement_created_or_confirmed(sender, instance: Settlement, created, **kwa
     trip = instance.trip
 
     if created:
-        # pending → уведомляем получателя
         subject = f"[EqualTrip] Вам отправлена оплата в поездке «{trip.title}»"
-        message = (
-            f"Пользователь {instance.from_user.username} отметил оплату:\n\n"
-            f"Сумма: {instance.amount} {instance.currency}\n"
-            f"Статус: ожидает подтверждения"
+        message = build_trip_message(
+            trip,
+            [
+                f"Пользователь {instance.from_user.username} отметил оплату в вашу сторону.",
+                f"Отправитель: {instance.from_user.username}",
+                f"Получатель: {instance.to_user.username}",
+                f"Сумма: {instance.amount} {instance.currency}",
+                f"Статус: ожидает подтверждения",
+                f"Подтверждение оплаты: {'прикреплено' if bool(instance.proof) else 'не прикреплено'}",
+                f"Создано: {format_datetime_value(instance.created_at)}",
+            ],
         )
-        recipients = [instance.to_user.email]
+        recipients = user_emails(instance.to_user)
     else:
-        # confirmed → уведомляем отправителя
         if instance.status != Settlement.Status.CONFIRMED:
             return
 
         subject = f"[EqualTrip] Оплата подтверждена в поездке «{trip.title}»"
-        message = (
-            f"Пользователь {instance.to_user.username} подтвердил оплату:\n\n"
-            f"Сумма: {instance.amount} {instance.currency}"
+        message = build_trip_message(
+            trip,
+            [
+                f"Пользователь {instance.to_user.username} подтвердил оплату.",
+                f"Отправитель: {instance.from_user.username}",
+                f"Получатель: {instance.to_user.username}",
+                f"Сумма: {instance.amount} {instance.currency}",
+                f"Статус: подтверждена",
+                f"Подтверждено: {format_datetime_value(instance.confirmed_at)}",
+            ],
         )
-        recipients = [instance.from_user.email]
+        recipients = user_emails(instance.from_user)
 
-    try:
-        send_notification(subject, message, recipients)
-    except Exception as e:
-        # логируем, но НЕ роняем API
-        import logging
-        logging.exception("Failed to send expense notification email")
+    safe_send_notification(subject, message, recipients, "Failed to send payment notification email")
