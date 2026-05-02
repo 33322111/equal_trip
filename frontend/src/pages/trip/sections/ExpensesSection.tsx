@@ -107,6 +107,7 @@ function extractErrorMessage(error: any, fallback: string) {
     data?.non_field_errors?.[0] ||
     data?.amount?.[0] ||
     data?.currency?.[0] ||
+    data?.spent_at?.[0] ||
     data?.category_id?.[0] ||
     data?.share_amounts?.[0] ||
     data?.share_user_ids?.[0] ||

@@ -28,8 +28,8 @@ class Expense(models.Model):
 
     receipt = models.FileField(upload_to="receipts/", null=True, blank=True)
 
-    amount_rub = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    fx_rate = models.DecimalField(max_digits=12, decimal_places=6, default=1)
+    amount_rub = models.DecimalField(max_digits=30, decimal_places=2, default=0)
+    fx_rate = models.DecimalField(max_digits=24, decimal_places=12, default=1)
 
     def __str__(self):
         return f"{self.trip_id}: {self.title} {self.amount} {self.currency}"
@@ -47,7 +47,7 @@ class ExpenseShare(models.Model):
 class ExchangeRate(models.Model):
     currency = models.CharField(max_length=8)  # "USD", "EUR"
     date = models.DateField()
-    rate_to_rub = models.DecimalField(max_digits=12, decimal_places=6)
+    rate_to_rub = models.DecimalField(max_digits=24, decimal_places=12)
 
     class Meta:
         unique_together = ("currency", "date")

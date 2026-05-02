@@ -5,7 +5,7 @@ from rest_framework import serializers
 from common.file_validation import RussianFileField, validate_receipt_upload
 from trips.models import Trip, TripMember
 from .models import Expense, ExpenseCategory, ExpenseShare
-from .fx import get_rate_to_rub
+from .fx import RateUnavailableError, get_rate_to_rub_fast
 
 User = get_user_model()
 
@@ -160,7 +160,10 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
         amount = Decimal(str(validated_data.get("amount", "0")))
         currency = (validated_data.get("currency") or "RUB").upper()
         spent_at = validated_data.get("spent_at")
-        rate = get_rate_to_rub(currency, spent_at.date() if spent_at else None)
+        try:
+            rate = get_rate_to_rub_fast(currency, spent_at.date() if spent_at else None)
+        except RateUnavailableError as exc:
+            raise serializers.ValidationError({"currency": [str(exc)]}) from exc
         amount_rub = quant2(amount * Decimal(rate))
 
         expense = Expense.objects.create(
@@ -219,6 +222,9 @@ class ExpenseUpdateSerializer(serializers.ModelSerializer):
         category_id = validated_data.pop("category_id", None)
         share_user_ids = validated_data.pop("share_user_ids", serializers.empty)
         share_amounts = validated_data.pop("share_amounts", serializers.empty)
+        amount_changed = "amount" in validated_data
+        currency_changed = "currency" in validated_data
+        spent_at_changed = "spent_at" in validated_data
 
         if share_user_ids is not serializers.empty and share_amounts is not serializers.empty:
             raise serializers.ValidationError("Передайте либо share_user_ids, либо share_amounts.")
@@ -230,14 +236,19 @@ class ExpenseUpdateSerializer(serializers.ModelSerializer):
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
 
-        # мультивалюта: пересчитываем fx_rate и amount_rub после возможных изменений
-        amount = Decimal(str(getattr(instance, "amount", "0")))
-        currency = (getattr(instance, "currency", "RUB") or "RUB").upper()
-        spent_at = getattr(instance, "spent_at", None)
-
-        rate = get_rate_to_rub(currency, spent_at.date() if spent_at else None)
-        instance.fx_rate = rate
-        instance.amount_rub = quant2(amount * Decimal(rate))
+        if currency_changed or spent_at_changed:
+            amount = Decimal(str(getattr(instance, "amount", "0")))
+            currency = (getattr(instance, "currency", "RUB") or "RUB").upper()
+            spent_at = getattr(instance, "spent_at", None)
+            try:
+                rate = get_rate_to_rub_fast(currency, spent_at.date() if spent_at else None)
+            except RateUnavailableError as exc:
+                raise serializers.ValidationError({"currency": [str(exc)]}) from exc
+            instance.fx_rate = rate
+            instance.amount_rub = quant2(amount * Decimal(rate))
+        elif amount_changed:
+            amount = Decimal(str(getattr(instance, "amount", "0")))
+            instance.amount_rub = quant2(amount * Decimal(str(instance.fx_rate)))
 
         instance.save()
 

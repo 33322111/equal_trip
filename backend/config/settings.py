@@ -159,6 +159,10 @@ IMAGE_UPLOAD_MAX_BYTES = int(os.getenv("IMAGE_UPLOAD_MAX_BYTES", str(5 * 1024 * 
 DOCUMENT_UPLOAD_MAX_BYTES = int(os.getenv("DOCUMENT_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
 
 OPENEXCHANGERATES_API_KEY = os.getenv("OPENEXCHANGERATES_API_KEY", "e3888ae5b7854938a4367005549bedc7")
+FX_RATES_ASYNC = os.getenv("FX_RATES_ASYNC", "0" if "test" in sys.argv else "1").strip().lower() in {"1", "true", "yes", "on"}
+FX_RATE_FETCH_MAX_WORKERS = int(os.getenv("FX_RATE_FETCH_MAX_WORKERS", "1"))
+FX_RATE_FETCH_LOCK_SECONDS = int(os.getenv("FX_RATE_FETCH_LOCK_SECONDS", "60"))
+FX_RATE_FETCH_TIMEOUT = int(os.getenv("FX_RATE_FETCH_TIMEOUT", "10"))
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST_USER = os.getenv("YANDEX_SMTP_USER")

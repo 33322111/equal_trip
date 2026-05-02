@@ -23,7 +23,14 @@ from expenses.export_pdf import (
     _to_decimal as pdf_to_decimal,
     export_trip_pdf,
 )
-from expenses.fx import fetch_rates_for_date, get_all_currencies, get_rate_to_rub
+from expenses.fx import (
+    RateUnavailableError,
+    fetch_rates_for_date,
+    get_all_currencies,
+    get_rate_to_rub,
+    get_rate_to_rub_fast,
+    refresh_rates_for_date,
+)
 from expenses.models import ExchangeRate, Expense, ExpenseCategory, ExpenseShare
 from expenses.serializers import _prepare_share_weights
 from expenses.services import compute_balance
@@ -65,7 +72,7 @@ class ExpensesApiTests(APITestCase):
     def auth(self, user):
         self.client.force_authenticate(user=user)
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("2.500000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("2.500000"))
     def test_create_expense_defaults_to_all_members_shares(self, _):
         self.auth(self.owner)
         payload = {
@@ -85,7 +92,29 @@ class ExpensesApiTests(APITestCase):
         users = sorted(s["user"]["id"] for s in shares)
         self.assertEqual(users, sorted([self.owner.id, self.member.id]))
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch(
+        "expenses.serializers.get_rate_to_rub_fast",
+        side_effect=RateUnavailableError("Курс для USD на 02.05.2026 загружается. Повторите попытку через несколько секунд."),
+    )
+    def test_create_expense_returns_fast_error_when_rate_is_not_ready(self, _):
+        self.auth(self.owner)
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/expenses/",
+            {
+                "title": "Pending FX",
+                "amount": "100.00",
+                "currency": "USD",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["currency"][0],
+            "Курс для USD на 02.05.2026 загружается. Повторите попытку через несколько секунд.",
+        )
+
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_create_expense_custom_split_success(self, _):
         self.auth(self.owner)
         payload = {
@@ -108,7 +137,7 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(weights[self.owner.id], Decimal("70.00"))
         self.assertEqual(weights[self.member.id], Decimal("30.00"))
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_create_expense_rejects_mismatched_custom_split(self, _):
         self.auth(self.owner)
         payload = {
@@ -125,7 +154,7 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("share_amounts", response.data)
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_create_expense_rejects_non_member_share_user(self, _):
         self.auth(self.owner)
         payload = {
@@ -139,7 +168,7 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("share_user_ids", response.data)
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_create_expense_rejects_both_share_fields(self, _):
         self.auth(self.owner)
         payload = {
@@ -156,7 +185,7 @@ class ExpensesApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("3.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("3.000000"))
     def test_update_expense_recalculates_rate_and_shares(self, _):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -197,7 +226,68 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(weights[self.owner.id], Decimal("120.00"))
         self.assertEqual(weights[self.member.id], Decimal("80.00"))
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast")
+    def test_update_expense_amount_only_reuses_existing_rate(self, mocked_rate):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Amount update",
+            amount=Decimal("50.00"),
+            currency="USD",
+            amount_rub=Decimal("125.00"),
+            fx_rate=Decimal("2.500000"),
+            category=self.category,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("1.00"))
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/expenses/{expense.id}/",
+            {"amount": "80.00"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        expense.refresh_from_db()
+        self.assertEqual(expense.fx_rate, Decimal("2.500000"))
+        self.assertEqual(expense.amount_rub, Decimal("200.00"))
+        mocked_rate.assert_not_called()
+
+    @patch("expenses.serializers.get_rate_to_rub_fast")
+    def test_upload_receipt_does_not_recalculate_currency_rate(self, mocked_rate):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Receipt only update",
+            amount=Decimal("100.00"),
+            currency="USD",
+            amount_rub=Decimal("250.00"),
+            fx_rate=Decimal("2.500000"),
+            category=self.category,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("60.00"))
+        ExpenseShare.objects.create(expense=expense, user=self.member, weight=Decimal("40.00"))
+
+        receipt = SimpleUploadedFile(
+            "receipt.gif",
+            VALID_GIF_BYTES,
+            content_type="image/gif",
+        )
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/expenses/{expense.id}/",
+            {"receipt": receipt},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        expense.refresh_from_db()
+        self.assertEqual(expense.fx_rate, Decimal("2.500000"))
+        self.assertEqual(expense.amount_rub, Decimal("250.00"))
+        mocked_rate.assert_not_called()
+
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_upload_receipt_returns_full_expense_payload(self, _):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -232,7 +322,7 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(len(response.data["shares"]), 2)
         self.assertEqual(Decimal(response.data["amount_rub"]), Decimal("100.00"))
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_upload_pdf_receipt_returns_full_expense_payload(self, _):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -268,7 +358,7 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(Decimal(response.data["amount_rub"]), Decimal("100.00"))
 
     @override_settings(IMAGE_UPLOAD_MAX_BYTES=10)
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_upload_receipt_rejects_oversize_file(self, _):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -295,7 +385,7 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("receipt", response.data)
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_upload_receipt_rejects_invalid_image_with_russian_message(self, _):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -439,7 +529,7 @@ class ExpensesApiTests(APITestCase):
         self.assertIn("attachment; filename=", response["Content-Disposition"])
         self.assertIn(".pdf", response["Content-Disposition"])
 
-    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_update_expense_rejects_both_share_fields(self, _):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -756,6 +846,43 @@ class ExpenseFxTests(TestCase):
             get_rate_to_rub("GBP", today)
 
         self.assertEqual(get_rate_to_rub("RUB", today), Decimal("1"))
+
+    @patch("expenses.fx.fetch_rates_for_date")
+    def test_refresh_rates_for_date_stores_large_supported_rates(self, mocked_fetch):
+        today = date.today()
+        mocked_fetch.return_value = {
+            "USD": 1,
+            "RUB": 90,
+            "STD": 25000,
+            "BTC": Decimal("0.000010"),
+        }
+
+        refresh_rates_for_date(today)
+
+        self.assertTrue(ExchangeRate.objects.filter(currency="STD", date=today).exists())
+        self.assertTrue(ExchangeRate.objects.filter(currency="BTC", date=today).exists())
+        self.assertEqual(
+            ExchangeRate.objects.get(currency="BTC", date=today).rate_to_rub,
+            Decimal("9000000.000000"),
+        )
+
+    @patch("expenses.fx.schedule_rates_refresh")
+    def test_get_rate_to_rub_fast_uses_cached_rate_without_refresh(self, mocked_schedule):
+        today = date.today()
+        ExchangeRate.objects.create(currency="EUR", date=today, rate_to_rub=Decimal("91.111111"))
+
+        self.assertEqual(get_rate_to_rub_fast("EUR", today), Decimal("91.111111"))
+        mocked_schedule.assert_not_called()
+
+    @override_settings(FX_RATES_ASYNC=True)
+    @patch("expenses.fx.schedule_rates_refresh")
+    def test_get_rate_to_rub_fast_raises_fast_and_schedules_refresh_on_cache_miss(self, mocked_schedule):
+        target_date = date(2026, 5, 2)
+
+        with self.assertRaises(RateUnavailableError):
+            get_rate_to_rub_fast("GBP", target_date)
+
+        mocked_schedule.assert_called_once_with(target_date, currencies=["GBP"])
 
     @patch("expenses.fx.requests.get")
     def test_get_all_currencies_fetches_then_uses_cache(self, mocked_get):

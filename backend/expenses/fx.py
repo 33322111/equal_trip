@@ -1,67 +1,155 @@
-import requests
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
+import logging
+
+import requests
 from django.conf import settings
-from django.utils import timezone
 from django.core.cache import cache
+from django.db import close_old_connections
+from django.utils import timezone
 
 from .models import ExchangeRate
 
 OPENEXCHANGE_URL = "https://openexchangerates.org/api/historical/{date}.json"
 CURRENCIES_URL = "https://openexchangerates.org/api/currencies.json"
+_EXECUTOR = ThreadPoolExecutor(
+    max_workers=getattr(settings, "FX_RATE_FETCH_MAX_WORKERS", 1),
+    thread_name_prefix="equaltrip-fx",
+)
 
 
-def fetch_rates_for_date(date):
-    """
-    Загружает курсы USD -> * на дату
-    """
-    url = OPENEXCHANGE_URL.format(date=date.strftime("%Y-%m-%d"))
-    params = {
-        "app_id": settings.OPENEXCHANGERATES_API_KEY,
-    }
-    resp = requests.get(url, params=params, timeout=10)
-    resp.raise_for_status()
-    return resp.json()["rates"]
+class RateUnavailableError(Exception):
+    pass
 
 
-def get_rate_to_rub(currency: str, date=None) -> Decimal:
+def _normalize_date(target_date=None):
+    return target_date or timezone.now().date()
+
+
+def _normalize_currencies(currencies=None):
+    if not currencies:
+        return None
+    return {currency.upper() for currency in currencies}
+
+
+def _store_rates_for_date(target_date, rates: dict, currencies=None):
+    if "USD" not in rates or "RUB" not in rates:
+        raise ValueError("Invalid rates data from OpenExchangeRates")
+
+    currencies = _normalize_currencies(currencies)
+    usd_to_rub = Decimal(str(rates["RUB"]))
+    items = (
+        ((currency, rates[currency]) for currency in currencies if currency in rates)
+        if currencies is not None
+        else rates.items()
+    )
+
+    for currency, cur_to_usd_raw in items:
+        cur_to_usd = Decimal(str(cur_to_usd_raw))
+        rate_to_rub = ((Decimal("1") / cur_to_usd) * usd_to_rub).quantize(Decimal("0.000001"))
+        ExchangeRate.objects.update_or_create(
+            currency=currency.upper(),
+            date=target_date,
+            defaults={"rate_to_rub": rate_to_rub},
+        )
+
+
+def refresh_rates_for_date(target_date=None, currencies=None):
+    target_date = _normalize_date(target_date)
+    rates = fetch_rates_for_date(target_date)
+    _store_rates_for_date(target_date, rates, currencies=currencies)
+
+
+def _refresh_rates_for_date_async(target_date, currencies=None):
+    close_old_connections()
+    try:
+        refresh_rates_for_date(target_date, currencies=currencies)
+    finally:
+        close_old_connections()
+
+
+def _clear_refresh_lock(cache_key, future):
+    try:
+        exc = future.exception()
+        if exc is not None:
+            logging.error(
+                "Async exchange rate refresh failed",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+    finally:
+        cache.delete(cache_key)
+
+
+def schedule_rates_refresh(target_date=None, currencies=None):
+    if not getattr(settings, "FX_RATES_ASYNC", False):
+        return False
+
+    target_date = _normalize_date(target_date)
+    normalized_currencies = _normalize_currencies(currencies)
+    currency_suffix = ",".join(sorted(normalized_currencies)) if normalized_currencies else "*"
+    cache_key = f"fx-rates-refresh:{target_date.isoformat()}:{currency_suffix}"
+    if not cache.add(cache_key, True, timeout=getattr(settings, "FX_RATE_FETCH_LOCK_SECONDS", 60)):
+        return False
+
+    future = _EXECUTOR.submit(_refresh_rates_for_date_async, target_date, normalized_currencies)
+    future.add_done_callback(lambda f: _clear_refresh_lock(cache_key, f))
+    return True
+
+
+def get_rate_to_rub_fast(currency: str, target_date=None) -> Decimal:
     currency = currency.upper()
     if currency == "RUB":
         return Decimal("1")
 
-    if date is None:
-        date = timezone.now().date()
-
-    # 1. Пробуем взять из БД
-    rate = ExchangeRate.objects.filter(currency=currency, date=date).first()
+    target_date = _normalize_date(target_date)
+    rate = ExchangeRate.objects.filter(currency=currency, date=target_date).first()
     if rate:
         return rate.rate_to_rub
 
-    # 2. Тянем курсы с API
-    rates = fetch_rates_for_date(date)
+    if getattr(settings, "FX_RATES_ASYNC", False):
+        schedule_rates_refresh(target_date, currencies=[currency])
+        raise RateUnavailableError(
+            f"Курс для {currency} на {target_date.strftime('%d.%m.%Y')} загружается. Повторите попытку через несколько секунд."
+        )
 
-    if "USD" not in rates or "RUB" not in rates or currency not in rates:
-        raise ValueError("Invalid rates data from OpenExchangeRates")
-
-    usd_to_rub = Decimal(str(rates["RUB"]))
-    cur_to_usd = Decimal(str(rates[currency]))
-
-    rate_to_rub = ((1 / cur_to_usd) * usd_to_rub).quantize(Decimal("0.000001"))
-
-    # 3. Сохраняем в БД
-    ExchangeRate.objects.create(
-        currency=currency,
-        date=date,
-        rate_to_rub=rate_to_rub,
+    raise RateUnavailableError(
+        f"Курс для {currency} на {target_date.strftime('%d.%m.%Y')} пока недоступен. Повторите попытку позже."
     )
 
-    return rate_to_rub
+
+def fetch_rates_for_date(target_date):
+    url = OPENEXCHANGE_URL.format(date=target_date.strftime("%Y-%m-%d"))
+    params = {
+        "app_id": settings.OPENEXCHANGERATES_API_KEY,
+    }
+    resp = requests.get(url, params=params, timeout=getattr(settings, "FX_RATE_FETCH_TIMEOUT", 10))
+    resp.raise_for_status()
+    return resp.json()["rates"]
+
+
+def get_rate_to_rub(currency: str, target_date=None) -> Decimal:
+    currency = currency.upper()
+    if currency == "RUB":
+        return Decimal("1")
+
+    target_date = _normalize_date(target_date)
+    rate = ExchangeRate.objects.filter(currency=currency, date=target_date).first()
+    if rate:
+        return rate.rate_to_rub
+
+    refresh_rates_for_date(target_date, currencies=[currency])
+    refreshed = ExchangeRate.objects.filter(currency=currency, date=target_date).first()
+    if refreshed:
+        return refreshed.rate_to_rub
+
+    raise ValueError("Invalid rates data from OpenExchangeRates")
+
+
+def warm_today_rates():
+    schedule_rates_refresh(timezone.now().date())
 
 
 def get_all_currencies():
-    """
-    Возвращает словарь: { "USD": "United States Dollar", ... }
-    Кэшируем на 24 часа.
-    """
     cache_key = "openexchangerates_currencies"
     data = cache.get(cache_key)
     if data:
@@ -70,7 +158,7 @@ def get_all_currencies():
     resp = requests.get(
         CURRENCIES_URL,
         params={"app_id": settings.OPENEXCHANGERATES_API_KEY},
-        timeout=10,
+        timeout=getattr(settings, "FX_RATE_FETCH_TIMEOUT", 10),
     )
     resp.raise_for_status()
     data = resp.json()

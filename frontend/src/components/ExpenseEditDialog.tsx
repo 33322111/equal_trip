@@ -210,6 +210,9 @@ export default function ExpenseEditDialog({
       const message =
         data?.detail ||
         data?.non_field_errors?.[0] ||
+        data?.currency?.[0] ||
+        data?.spent_at?.[0] ||
+        data?.amount?.[0] ||
         data?.share_amounts?.[0] ||
         data?.share_user_ids?.[0] ||
         "Не удалось сохранить расход.";
