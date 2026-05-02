@@ -32,6 +32,33 @@ function round2(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function toLocalDateInputValue(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function toLocalTimeInputValue(value: string | null | undefined, includeTime: boolean) {
+  if (!value || !includeTime) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function todayDateInputValue() {
+  return toLocalDateInputValue(new Date().toISOString());
+}
+
+function getErrorText(value: unknown) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
 function buildEvenSplit(total: number, userIds: number[]) {
   const result: Record<number, string> = {};
   if (!Number.isFinite(total) || total <= 0 || userIds.length === 0) {
@@ -57,9 +84,12 @@ function buildEvenSplit(total: number, userIds: number[]) {
 export default function ExpenseEditDialog({
   open, onClose, tripId, trip, categories, expense, onSaved
 }: Props) {
+  const maxSpentDate = useMemo(() => todayDateInputValue(), []);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("RUB");
+  const [spentDate, setSpentDate] = useState("");
+  const [spentTime, setSpentTime] = useState("");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [splitMode, setSplitMode] = useState<SplitMode>("equal");
@@ -75,6 +105,8 @@ export default function ExpenseEditDialog({
     setTitle(expense.title);
     setAmount(String(expense.amount));
     setCurrency(expense.currency);
+    setSpentDate(toLocalDateInputValue(expense.spent_at));
+    setSpentTime(toLocalTimeInputValue(expense.spent_at, expense.spent_time_known));
     setCategoryId(expense.category?.id ?? "");
     setFormError(null);
 
@@ -181,6 +213,8 @@ export default function ExpenseEditDialog({
         title: string;
         amount: number;
         currency: string;
+        spent_date: string | null;
+        spent_time: string | null;
         category_id: number | null;
         share_user_ids?: number[];
         share_amounts?: { user_id: number; amount: string }[];
@@ -188,6 +222,8 @@ export default function ExpenseEditDialog({
         title: title.trim(),
         amount: amountNum,
         currency,
+        spent_date: spentDate || null,
+        spent_time: spentDate && spentTime ? spentTime : null,
         category_id: categoryId === "" ? null : categoryId,
       };
 
@@ -207,14 +243,16 @@ export default function ExpenseEditDialog({
       onClose();
     } catch (e: any) {
       const data = e?.response?.data;
-      const message =
-        data?.detail ||
-        data?.non_field_errors?.[0] ||
-        data?.currency?.[0] ||
-        data?.spent_at?.[0] ||
-        data?.amount?.[0] ||
-        data?.share_amounts?.[0] ||
-        data?.share_user_ids?.[0] ||
+        const message =
+          data?.detail ||
+          getErrorText(data?.non_field_errors) ||
+          getErrorText(data?.currency) ||
+          getErrorText(data?.spent_date) ||
+          getErrorText(data?.spent_time) ||
+          getErrorText(data?.spent_at) ||
+          getErrorText(data?.amount) ||
+        getErrorText(data?.share_amounts) ||
+        getErrorText(data?.share_user_ids) ||
         "Не удалось сохранить расход.";
       setFormError(String(message));
     } finally {
@@ -252,6 +290,32 @@ export default function ExpenseEditDialog({
           value={currency}
           onChange={(e) => setCurrency(e.target.value)}
         />
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 2 }}>
+          <TextField
+            label="Дата расхода"
+            type="date"
+            value={spentDate}
+          onChange={(e) => {
+            const nextDate = e.target.value;
+            setSpentDate(nextDate);
+            if (!nextDate) {
+              setSpentTime("");
+            }
+          }}
+          inputProps={{ max: maxSpentDate }}
+          InputLabelProps={{ shrink: true }}
+          sx={{ flex: 1, minWidth: 0, width: "100%" }}
+        />
+          <TextField
+            label="Время расхода"
+            type="time"
+            value={spentTime}
+            onChange={(e) => setSpentTime(e.target.value)}
+            disabled={!spentDate}
+            InputLabelProps={{ shrink: true }}
+            sx={{ flex: 1, minWidth: 0, width: "100%" }}
+          />
+        </Stack>
         <TextField
           select
           label="Категория"

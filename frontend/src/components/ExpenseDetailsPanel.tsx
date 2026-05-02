@@ -34,13 +34,18 @@ function formatAmount(value: number | null) {
   }).format(round2(value));
 }
 
-function formatExpenseDate(value: string | null) {
+function formatExpenseDate(value: string | null, includeTime = true) {
   if (!value) return "Дата не указана";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Дата не указана";
+  if (includeTime) {
+    return new Intl.DateTimeFormat("ru-RU", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+  }
   return new Intl.DateTimeFormat("ru-RU", {
     dateStyle: "medium",
-    timeStyle: "short",
   }).format(date);
 }
 
@@ -126,7 +131,7 @@ export default function ExpenseDetailsPanel({ expense }: Props) {
       <Typography>Автор: {expense.created_by.username}</Typography>
       <Typography>Почта автора: {expense.created_by.email || "—"}</Typography>
       <Typography>
-        Дата расхода: {expense.spent_at ? formatExpenseDate(expense.spent_at) : "не указана"}
+        Дата расхода: {expense.spent_at ? formatExpenseDate(expense.spent_at, expense.spent_time_known) : "не указана"}
       </Typography>
       <Typography>Время добавления: {formatExpenseDate(expense.created_at)}</Typography>
       {expense.currency.toUpperCase() !== "RUB" ? (

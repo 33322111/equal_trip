@@ -99,20 +99,50 @@ function round2(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function formatExpenseDateShort(value: string | null | undefined, includeTime = true) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  if (includeTime) {
+    return new Intl.DateTimeFormat("ru-RU", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+  }
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "medium",
+  }).format(date);
+}
+
+function todayDateInputValue() {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function getErrorText(value: unknown) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
 function extractErrorMessage(error: any, fallback: string) {
   const data = error?.response?.data;
   return (
-    data?.receipt?.[0] ||
+    getErrorText(data?.receipt) ||
     data?.detail ||
-    data?.non_field_errors?.[0] ||
-    data?.amount?.[0] ||
-    data?.currency?.[0] ||
-    data?.spent_at?.[0] ||
-    data?.category_id?.[0] ||
-    data?.share_amounts?.[0] ||
-    data?.share_user_ids?.[0] ||
-    data?.lat?.[0] ||
-    data?.lng?.[0] ||
+    getErrorText(data?.non_field_errors) ||
+    getErrorText(data?.amount) ||
+    getErrorText(data?.currency) ||
+    getErrorText(data?.spent_date) ||
+    getErrorText(data?.spent_time) ||
+    getErrorText(data?.spent_at) ||
+    getErrorText(data?.category_id) ||
+    getErrorText(data?.share_amounts) ||
+    getErrorText(data?.share_user_ids) ||
+    getErrorText(data?.lat) ||
+    getErrorText(data?.lng) ||
     fallback
   );
 }
@@ -168,6 +198,7 @@ function mergeExpense(prevExpense: Expense, nextExpense: Expense) {
 }
 
 export default function ExpensesSection({ tripId, trip, onAfterChange, onExpensesChange, onError }: Props) {
+  const maxSpentDate = useMemo(() => todayDateInputValue(), []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -177,6 +208,8 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
   const [formAmount, setFormAmount] = useState<string>("");
   const [formCategoryId, setFormCategoryId] = useState<number | "">("");
   const [formCurrency, setFormCurrency] = useState<string>("RUB");
+  const [formSpentDate, setFormSpentDate] = useState<string>("");
+  const [formSpentTime, setFormSpentTime] = useState<string>("");
   const [formSplitMode, setFormSplitMode] = useState<SplitMode>("equal");
   const [formShareUserIds, setFormShareUserIds] = useState<number[]>([]);
   const [formShareAmounts, setFormShareAmounts] = useState<Record<number, string>>({});
@@ -378,6 +411,8 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
         title: string;
         amount: number;
         currency: string;
+        spent_date?: string | null;
+        spent_time?: string | null;
         category_id: number | null;
         lat?: number;
         lng?: number;
@@ -388,6 +423,8 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
         amount: amountNum,
         currency: formCurrency,
         category_id: formCategoryId === "" ? null : formCategoryId,
+        spent_date: formSpentDate || null,
+        spent_time: formSpentDate && formSpentTime ? formSpentTime : null,
       };
 
       if (formSplitMode === "custom") {
@@ -411,6 +448,8 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
       setFormAmount("");
       setFormCategoryId("");
       setFormCurrency("RUB");
+      setFormSpentDate("");
+      setFormSpentTime("");
       setFormSplitMode("equal");
       setFormShareUserIds(tripUsers.map((u) => u.id));
       setFormShareAmounts({});
@@ -644,6 +683,38 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
               sx={{ minWidth: 0 }}
             />
 
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              spacing={1}
+              sx={{ minWidth: 0 }}
+              alignItems="flex-start"
+            >
+              <TextField
+                label="Дата расхода"
+                type="date"
+                value={formSpentDate}
+                onChange={(e) => {
+                  const nextDate = e.target.value;
+                  setFormSpentDate(nextDate);
+                  if (!nextDate) {
+                    setFormSpentTime("");
+                  }
+                }}
+                inputProps={{ max: maxSpentDate }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex: 1, minWidth: 0, width: "100%" }}
+              />
+              <TextField
+                label="Время расхода"
+                type="time"
+                value={formSpentTime}
+                onChange={(e) => setFormSpentTime(e.target.value)}
+                disabled={!formSpentDate}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex: 1, minWidth: 0, width: "100%" }}
+              />
+            </Stack>
+
             <Autocomplete
               options={currencies}
               sx={{ width: "100%", minWidth: 0 }}
@@ -671,7 +742,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
                 gridColumn: {
                   xs: "auto",
                   sm: "span 2",
-                  lg: "span 1",
+                  lg: "span 2",
                   xl: "span 1",
                 },
               }}
@@ -958,6 +1029,12 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
                     <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
                       {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
                     </Typography>
+
+                    {ex.spent_at ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        Дата расхода: {formatExpenseDateShort(ex.spent_at, ex.spent_time_known)}
+                      </Typography>
+                    ) : null}
 
                     {ex.shares?.length ? (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>

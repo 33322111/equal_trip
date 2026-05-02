@@ -92,6 +92,103 @@ class ExpensesApiTests(APITestCase):
         users = sorted(s["user"]["id"] for s in shares)
         self.assertEqual(users, sorted([self.owner.id, self.member.id]))
 
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
+    def test_create_expense_allows_date_without_time(self, _):
+        self.auth(self.owner)
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/expenses/",
+            {
+                "title": "Date only expense",
+                "amount": "100.00",
+                "currency": "RUB",
+                "spent_date": "2026-05-02",
+                "spent_time": None,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(response.data["spent_time_known"])
+        expense = Expense.objects.get(id=response.data["id"])
+        self.assertFalse(expense.spent_time_known)
+        self.assertIsNotNone(expense.spent_at)
+
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
+    def test_create_expense_rejects_time_without_date(self, _):
+        self.auth(self.owner)
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/expenses/",
+            {
+                "title": "Broken date",
+                "amount": "100.00",
+                "currency": "RUB",
+                "spent_time": "12:30",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["spent_time"][0], "Укажите дату расхода, если задаёте время.")
+
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
+    def test_create_expense_rejects_future_date(self, _):
+        self.auth(self.owner)
+        future_date = (timezone.localdate() + timedelta(days=1)).isoformat()
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/expenses/",
+            {
+                "title": "Future expense",
+                "amount": "100.00",
+                "currency": "RUB",
+                "spent_date": future_date,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["spent_date"][0], "Дата расхода не может быть в будущем.")
+
+    @patch("expenses.serializers._current_utc_date", return_value=date(2026, 5, 2))
+    @patch("expenses.serializers._client_today", return_value=date(2026, 5, 3))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
+    def test_create_expense_uses_last_available_utc_date_for_date_only_when_client_is_ahead(self, mocked_rate, *_):
+        self.auth(self.owner)
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/expenses/",
+            {
+                "title": "China date only expense",
+                "amount": "100.00",
+                "currency": "RON",
+                "spent_date": "2026-05-03",
+            },
+            format="json",
+            HTTP_X_CLIENT_TIMEZONE="Asia/Shanghai",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mocked_rate.assert_called_once_with("RON", date(2026, 5, 2))
+
+    @patch("expenses.serializers._current_utc_date", return_value=date(2026, 5, 2))
+    @patch("expenses.serializers._client_today", return_value=date(2026, 5, 3))
+    @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
+    def test_create_expense_uses_utc_date_for_exact_time_when_client_is_ahead(self, mocked_rate, *_):
+        self.auth(self.owner)
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/expenses/",
+            {
+                "title": "China timed expense",
+                "amount": "100.00",
+                "currency": "RON",
+                "spent_date": "2026-05-03",
+                "spent_time": "01:30",
+            },
+            format="json",
+            HTTP_X_CLIENT_TIMEZONE="Asia/Shanghai",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mocked_rate.assert_called_once_with("RON", date(2026, 5, 2))
+
     @patch(
         "expenses.serializers.get_rate_to_rub_fast",
         side_effect=RateUnavailableError("Курс для USD на 02.05.2026 загружается. Повторите попытку через несколько секунд."),

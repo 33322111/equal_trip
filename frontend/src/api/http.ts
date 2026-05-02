@@ -11,6 +11,23 @@ const refreshApi = axios.create({
 
 let refreshPromise: Promise<string> | null = null;
 
+const resolveClientTimezone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+};
+
+const isAuthRequestUrl = (url?: string) => {
+  const requestUrl = url ?? '';
+  return (
+    requestUrl.includes('/auth/login/') ||
+    requestUrl.includes('/auth/register/') ||
+    requestUrl.includes('/auth/refresh/')
+  );
+};
+
 const clearStoredTokens = () => {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
@@ -59,6 +76,9 @@ api.interceptors.request.use((config) => {
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  if (config.headers && !isAuthRequestUrl(config.url)) {
+    config.headers['X-Client-Timezone'] = resolveClientTimezone();
+  }
   return config;
 });
 
@@ -74,11 +94,7 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const requestUrl = originalRequest.url ?? '';
-    const isAuthEndpoint =
-      requestUrl.includes('/auth/login/') ||
-      requestUrl.includes('/auth/register/') ||
-      requestUrl.includes('/auth/refresh/');
+    const isAuthEndpoint = isAuthRequestUrl(originalRequest.url);
 
     if (isAuthEndpoint) {
       return Promise.reject(error);

@@ -8,6 +8,7 @@ export type Expense = {
   amount: string;
   currency: string;
   spent_at: string | null;
+  spent_time_known: boolean;
   created_at: string;
   created_by: { id: number; username: string; email: string };
   category: Category | null;
@@ -47,7 +48,8 @@ export async function createExpense(
     title: string;
     amount: number | string;
     currency?: string;
-    spent_at?: string | null;
+    spent_date?: string | null;
+    spent_time?: string | null;
     category_id?: number | null;
     lat?: number | null;
     lng?: number | null;
@@ -75,7 +77,8 @@ export async function updateExpense(
     title?: string;
     amount?: number | string;
     currency?: string;
-    spent_at?: string | null;
+    spent_date?: string | null;
+    spent_time?: string | null;
     category_id?: number | null;
     lat?: number | null;
     lng?: number | null;

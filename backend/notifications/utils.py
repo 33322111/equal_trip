@@ -40,7 +40,7 @@ def format_date_value(value: date | None) -> str:
     return value.strftime("%d.%m.%Y")
 
 
-def format_datetime_value(value: datetime | None) -> str:
+def format_datetime_value(value: datetime | None, include_time: bool = True) -> str:
     if value is None:
         return "не указано"
 
@@ -49,7 +49,9 @@ def format_datetime_value(value: datetime | None) -> str:
         localized = timezone.make_aware(value, current_tz)
     else:
         localized = timezone.localtime(value, current_tz)
-    return localized.strftime("%d.%m.%Y %H:%M")
+    if include_time:
+        return localized.strftime("%d.%m.%Y %H:%M")
+    return localized.strftime("%d.%m.%Y")
 
 
 def build_trip_message(trip: Trip, lines: list[str]) -> str:

@@ -1,5 +1,8 @@
+from datetime import datetime, time, timezone as dt_timezone
 from decimal import Decimal, ROUND_HALF_UP
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework import serializers
 
 from common.file_validation import RussianFileField, validate_receipt_upload
@@ -41,6 +44,83 @@ class ShareAmountInputSerializer(serializers.Serializer):
 
 def _trip_member_ids(trip: Trip):
     return set(TripMember.objects.filter(trip=trip).values_list("user_id", flat=True))
+
+
+def _resolve_client_timezone(request) -> dt_timezone | ZoneInfo:
+    if request is not None:
+        timezone_name = request.headers.get("X-Client-Timezone")
+        if timezone_name:
+            try:
+                return ZoneInfo(timezone_name)
+            except ZoneInfoNotFoundError:
+                pass
+    return timezone.get_default_timezone()
+
+
+def _client_today(client_tz):
+    return timezone.now().astimezone(client_tz).date()
+
+
+def _current_utc_date():
+    return timezone.now().astimezone(dt_timezone.utc).date()
+
+
+def _ensure_aware_in_timezone(value, target_tz):
+    if timezone.is_naive(value):
+        return timezone.make_aware(value, target_tz)
+    return value
+
+
+def _resolve_rate_lookup_date(*, spent_at, spent_time_known: bool, request):
+    if not spent_at:
+        return None
+
+    client_tz = _resolve_client_timezone(request)
+    spent_at = _ensure_aware_in_timezone(spent_at, client_tz)
+
+    if spent_time_known:
+        return spent_at.astimezone(dt_timezone.utc).date()
+
+    spent_local_date = spent_at.astimezone(client_tz).date()
+    return min(spent_local_date, _current_utc_date())
+
+
+def _resolve_spent_datetime(validated_data, *, request=None):
+    spent_date = validated_data.pop("spent_date", serializers.empty)
+    spent_time = validated_data.pop("spent_time", serializers.empty)
+    client_tz = _resolve_client_timezone(request)
+    today = _client_today(client_tz)
+
+    if spent_date is serializers.empty and spent_time is serializers.empty:
+        if "spent_at" in validated_data:
+            spent_at = validated_data["spent_at"]
+            if spent_at:
+                spent_at = _ensure_aware_in_timezone(spent_at, client_tz)
+                validated_data["spent_at"] = spent_at
+            if spent_at and spent_at.astimezone(client_tz).date() > today:
+                raise serializers.ValidationError({"spent_date": "Дата расхода не может быть в будущем."})
+            validated_data["spent_time_known"] = bool(validated_data["spent_at"])
+        return
+
+    if spent_date in (serializers.empty, None):
+        if spent_time not in (serializers.empty, None):
+            raise serializers.ValidationError({"spent_time": "Укажите дату расхода, если задаёте время."})
+        validated_data["spent_at"] = None
+        validated_data["spent_time_known"] = False
+        return
+
+    if spent_date > today:
+        raise serializers.ValidationError({"spent_date": "Дата расхода не может быть в будущем."})
+
+    if spent_time in (serializers.empty, None):
+        spent_at = timezone.make_aware(datetime.combine(spent_date, time.min), client_tz)
+        validated_data["spent_at"] = spent_at
+        validated_data["spent_time_known"] = False
+        return
+
+    spent_at = timezone.make_aware(datetime.combine(spent_date, spent_time), client_tz)
+    validated_data["spent_at"] = spent_at
+    validated_data["spent_time_known"] = True
 
 
 def _prepare_share_weights(
@@ -110,6 +190,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "amount_rub",
             "category",
             "spent_at",
+            "spent_time_known",
             "lat",
             "lng",
             "receipt",
@@ -122,6 +203,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
 class ExpenseCreateSerializer(serializers.ModelSerializer):
     category_id = serializers.IntegerField(required=False, allow_null=True)
+    spent_date = serializers.DateField(required=False, allow_null=True, write_only=True)
+    spent_time = serializers.TimeField(required=False, allow_null=True, write_only=True)
     share_user_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
     share_amounts = ShareAmountInputSerializer(many=True, required=False)
     lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False)
@@ -134,6 +217,8 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
             "amount",
             "currency",
             "spent_at",
+            "spent_date",
+            "spent_time",
             "category_id",
             "lat",
             "lng",
@@ -144,6 +229,8 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         trip: Trip = self.context["trip"]
+
+        _resolve_spent_datetime(validated_data, request=request)
 
         category_id = validated_data.pop("category_id", None)
         share_user_ids = validated_data.pop("share_user_ids", None)
@@ -160,8 +247,14 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
         amount = Decimal(str(validated_data.get("amount", "0")))
         currency = (validated_data.get("currency") or "RUB").upper()
         spent_at = validated_data.get("spent_at")
+        spent_time_known = validated_data.get("spent_time_known", bool(spent_at))
+        rate_lookup_date = _resolve_rate_lookup_date(
+            spent_at=spent_at,
+            spent_time_known=spent_time_known,
+            request=request,
+        )
         try:
-            rate = get_rate_to_rub_fast(currency, spent_at.date() if spent_at else None)
+            rate = get_rate_to_rub_fast(currency, rate_lookup_date)
         except RateUnavailableError as exc:
             raise serializers.ValidationError({"currency": [str(exc)]}) from exc
         amount_rub = quant2(amount * Decimal(rate))
@@ -192,6 +285,8 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
 
 class ExpenseUpdateSerializer(serializers.ModelSerializer):
     category_id = serializers.IntegerField(required=False, allow_null=True)
+    spent_date = serializers.DateField(required=False, allow_null=True, write_only=True)
+    spent_time = serializers.TimeField(required=False, allow_null=True, write_only=True)
     share_user_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
     share_amounts = ShareAmountInputSerializer(many=True, required=False)
     lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
@@ -205,6 +300,8 @@ class ExpenseUpdateSerializer(serializers.ModelSerializer):
             "amount",
             "currency",
             "spent_at",
+            "spent_date",
+            "spent_time",
             "category_id",
             "lat",
             "lng",
@@ -219,6 +316,9 @@ class ExpenseUpdateSerializer(serializers.ModelSerializer):
         return validate_receipt_upload(value, label="Чек")
 
     def update(self, instance: Expense, validated_data):
+        request = self.context.get("request")
+        _resolve_spent_datetime(validated_data, request=request)
+
         category_id = validated_data.pop("category_id", None)
         share_user_ids = validated_data.pop("share_user_ids", serializers.empty)
         share_amounts = validated_data.pop("share_amounts", serializers.empty)
@@ -240,8 +340,14 @@ class ExpenseUpdateSerializer(serializers.ModelSerializer):
             amount = Decimal(str(getattr(instance, "amount", "0")))
             currency = (getattr(instance, "currency", "RUB") or "RUB").upper()
             spent_at = getattr(instance, "spent_at", None)
+            spent_time_known = getattr(instance, "spent_time_known", bool(spent_at))
+            rate_lookup_date = _resolve_rate_lookup_date(
+                spent_at=spent_at,
+                spent_time_known=spent_time_known,
+                request=request,
+            )
             try:
-                rate = get_rate_to_rub_fast(currency, spent_at.date() if spent_at else None)
+                rate = get_rate_to_rub_fast(currency, rate_lookup_date)
             except RateUnavailableError as exc:
                 raise serializers.ValidationError({"currency": [str(exc)]}) from exc
             instance.fx_rate = rate

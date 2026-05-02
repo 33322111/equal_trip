@@ -20,6 +20,7 @@ class Expense(models.Model):
 
     category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name="expenses")
     spent_at = models.DateTimeField(null=True, blank=True)
+    spent_time_known = models.BooleanField(default=True)
 
     lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)

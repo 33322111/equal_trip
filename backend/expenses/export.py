@@ -21,10 +21,12 @@ def _q2(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _fmt_dt(value) -> str:
+def _fmt_dt(value, include_time: bool = True) -> str:
     if not value:
         return ""
-    return localtime(value).strftime("%Y-%m-%d %H:%M")
+    if include_time:
+        return localtime(value).strftime("%Y-%m-%d %H:%M")
+    return localtime(value).strftime("%Y-%m-%d")
 
 
 def _split_mode(shares) -> str:
@@ -126,7 +128,7 @@ def export_trip_csv(trip: Trip):
             e.category.name if e.category else "",
             e.created_by.username,
             e.created_by.email or "",
-            _fmt_dt(e.spent_at),
+            _fmt_dt(e.spent_at, include_time=e.spent_time_known),
             _fmt_dt(e.created_at),
             e.lat or "",
             e.lng or "",

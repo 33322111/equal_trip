@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 import logging
 
@@ -23,7 +24,7 @@ class RateUnavailableError(Exception):
 
 
 def _normalize_date(target_date=None):
-    return target_date or timezone.now().date()
+    return target_date or timezone.now().astimezone(dt_timezone.utc).date()
 
 
 def _normalize_currencies(currencies=None):
@@ -146,7 +147,7 @@ def get_rate_to_rub(currency: str, target_date=None) -> Decimal:
 
 
 def warm_today_rates():
-    schedule_rates_refresh(timezone.now().date())
+    schedule_rates_refresh(timezone.now().astimezone(dt_timezone.utc).date())
 
 
 def get_all_currencies():
