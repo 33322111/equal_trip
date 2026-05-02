@@ -44,7 +44,7 @@ class PaymentsApiTests(APITestCase):
         )
 
     def test_create_settlement_success(self):
-        self.auth(self.owner)
+        self.auth(self.member)
         response = self.client.post(
             f"/api/trips/{self.trip.id}/settlements/",
             {
@@ -60,6 +60,21 @@ class PaymentsApiTests(APITestCase):
         settlement = Settlement.objects.get(trip=self.trip, from_user=self.member, to_user=self.owner)
         self.assertEqual(settlement.status, Settlement.Status.PENDING)
         self.assertEqual(settlement.amount, Decimal("250.00"))
+
+    def test_create_settlement_forbidden_when_spoofing_another_payer(self):
+        self.auth(self.owner)
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/settlements/",
+            {
+                "from_user": self.member.id,
+                "to_user": self.owner.id,
+                "amount": "250.00",
+                "currency": "RUB",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_create_settlement_rejects_same_users(self):
         self.auth(self.owner)
@@ -90,6 +105,12 @@ class PaymentsApiTests(APITestCase):
         response = self.client.get(f"/api/trips/{self.trip.id}/settlements/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 2)
+
+    def test_list_settlements_forbidden_for_non_member(self):
+        self.create_settlement()
+        self.auth(self.third)
+        response = self.client.get(f"/api/trips/{self.trip.id}/settlements/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_confirm_settlement_by_receiver(self):
         settlement = self.create_settlement()
@@ -158,6 +179,29 @@ class PaymentsApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Settlement.objects.filter(id=settlement.id).exists())
 
+    def test_delete_settlement_allowed_for_payer(self):
+        settlement = self.create_settlement()
+        self.auth(self.member)
+        response = self.client.delete(f"/api/trips/{self.trip.id}/settlements/{settlement.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Settlement.objects.filter(id=settlement.id).exists())
+
+    def test_delete_settlement_forbidden_for_receiver_non_owner(self):
+        settlement = Settlement.objects.create(
+            trip=self.trip,
+            from_user=self.owner,
+            to_user=self.member,
+            amount=Decimal("80.00"),
+            currency="RUB",
+            status=Settlement.Status.PENDING,
+        )
+        self.auth(self.member)
+        response = self.client.delete(f"/api/trips/{self.trip.id}/settlements/{settlement.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Settlement.objects.filter(id=settlement.id).exists())
+
     def test_create_settlement_rejects_non_positive_amount(self):
         self.auth(self.owner)
         response = self.client.post(
@@ -173,7 +217,7 @@ class PaymentsApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_create_settlement_rejects_non_member_user(self):
-        self.auth(self.owner)
+        self.auth(self.third)
         response = self.client.post(
             f"/api/trips/{self.trip.id}/settlements/",
             {
@@ -184,7 +228,7 @@ class PaymentsApiTests(APITestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_settlement_model_str(self):
         settlement = self.create_settlement()
