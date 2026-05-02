@@ -108,8 +108,10 @@ export default function BalanceSettlementsSection({
       await createSettlement(tripId, fd);
       closePayDialog();
       await onAfterChange();
-    } catch {
-      onError("Не удалось создать оплату.");
+    } catch (e: any) {
+      const data = e?.response?.data;
+      const message = data?.proof?.[0] || data?.detail || "Не удалось создать оплату.";
+      onError(String(message));
     } finally {
       setPaySubmitting(false);
     }
@@ -138,8 +140,10 @@ export default function BalanceSettlementsSection({
       await confirmSettlement(tripId, confirmSettlementId, fd);
       closeConfirmDialog();
       await onAfterChange();
-    } catch {
-      onError("Не удалось подтвердить оплату.");
+    } catch (e: any) {
+      const data = e?.response?.data;
+      const message = data?.proof?.[0] || data?.detail || "Не удалось подтвердить оплату.";
+      onError(String(message));
     } finally {
       setConfirmSubmitting(false);
     }
@@ -330,7 +334,12 @@ export default function BalanceSettlementsSection({
 
           <Button variant="outlined" component="label" startIcon={<AttachFileIcon />} sx={{ mt: 1 }}>
             Прикрепить скриншот
-            <input hidden type="file" onChange={(e) => setPayProofFile(e.target.files?.[0] ?? null)} />
+            <input
+              hidden
+              type="file"
+              accept="application/pdf,image/jpeg,image/png,image/gif,image/webp"
+              onChange={(e) => setPayProofFile(e.target.files?.[0] ?? null)}
+            />
           </Button>
 
           {payProofFile ? (
@@ -358,7 +367,12 @@ export default function BalanceSettlementsSection({
 
           <Button variant="outlined" component="label" startIcon={<AttachFileIcon />}>
             Прикрепить скриншот
-            <input hidden type="file" onChange={(e) => setConfirmProofFile(e.target.files?.[0] ?? null)} />
+            <input
+              hidden
+              type="file"
+              accept="application/pdf,image/jpeg,image/png,image/gif,image/webp"
+              onChange={(e) => setConfirmProofFile(e.target.files?.[0] ?? null)}
+            />
           </Button>
 
           {confirmProofFile ? (

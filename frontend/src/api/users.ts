@@ -3,7 +3,6 @@ import { api } from "./http";
 export type UserSearchItem = {
   id: number;
   username: string;
-  email: string;
   avatar: string | null;
 };
 

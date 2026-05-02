@@ -84,6 +84,21 @@ class ItineraryApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("assignee_id", response.data)
 
+    def test_create_day_item_rejects_end_time_before_start_time(self):
+        day = self.create_day()
+        self.auth(self.owner)
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/days/{day.id}/items/",
+            {
+                "title": "Broken time",
+                "time_from": "15:00",
+                "time_to": "11:00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("time_to", response.data)
+
     def test_patch_day_item(self):
         day = self.create_day()
         item = self.create_item(day)
@@ -105,6 +120,22 @@ class ItineraryApiTests(APITestCase):
         self.assertEqual(response.data["description"], "Updated description")
         self.assertTrue(response.data["is_done"])
         self.assertEqual(response.data["time_from"], "10:30:00")
+
+    def test_patch_day_item_rejects_end_time_before_start_time(self):
+        day = self.create_day()
+        item = self.create_item(day)
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/days/{day.id}/items/{item.id}/",
+            {
+                "time_from": "18:00",
+                "time_to": "12:00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("time_to", response.data)
 
     def test_comments_crud_and_permissions(self):
         day = self.create_day()

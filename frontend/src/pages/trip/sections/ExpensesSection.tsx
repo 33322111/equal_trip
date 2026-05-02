@@ -18,6 +18,7 @@ import {
   DialogContent,
   DialogActions,
   TablePagination,
+  Alert,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
@@ -98,6 +99,23 @@ function round2(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function extractErrorMessage(error: any, fallback: string) {
+  const data = error?.response?.data;
+  return (
+    data?.receipt?.[0] ||
+    data?.detail ||
+    data?.non_field_errors?.[0] ||
+    data?.amount?.[0] ||
+    data?.currency?.[0] ||
+    data?.category_id?.[0] ||
+    data?.share_amounts?.[0] ||
+    data?.share_user_ids?.[0] ||
+    data?.lat?.[0] ||
+    data?.lng?.[0] ||
+    fallback
+  );
+}
+
 function buildEvenSplit(total: number, userIds: number[]) {
   const result: Record<number, string> = {};
   if (!Number.isFinite(total) || total <= 0 || userIds.length === 0) {
@@ -124,6 +142,10 @@ function toTimestamp(value: string | null | undefined) {
   if (!value) return 0;
   const ts = Date.parse(value);
   return Number.isFinite(ts) ? ts : 0;
+}
+
+function isPdfUrl(url: string) {
+  return url.split("?")[0].toLowerCase().endsWith(".pdf");
 }
 
 function toSortAmountRub(ex: Expense) {
@@ -178,6 +200,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
   const [receiptTitle, setReceiptTitle] = useState<string>("");
   const [receiptExpenseId, setReceiptExpenseId] = useState<number | null>(null);
   const [uploadingReceiptIds, setUploadingReceiptIds] = useState<number[]>([]);
+  const [sectionError, setSectionError] = useState<string | null>(null);
   const theme = useTheme();
   const isXs = useMediaQuery(theme.breakpoints.down("sm"));
   const isSm = useMediaQuery(theme.breakpoints.between("sm", "md"));
@@ -265,6 +288,11 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
     });
   };
 
+  const reportSectionError = (message: string) => {
+    setSectionError(message);
+    onError(message);
+  };
+
   const replaceExpenses = (nextExpenses: Expense[]) => {
     setExpenses(nextExpenses);
     onExpensesChange?.(nextExpenses);
@@ -302,15 +330,15 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
     const hasLng = formLng !== null;
     const hasCoords = Number.isFinite(formLat) && Number.isFinite(formLng);
     if (!formTitle.trim()) {
-      onError("Введите название расхода.");
+      reportSectionError("Введите название расхода.");
       return;
     }
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      onError("Введите корректную сумму > 0.");
+      reportSectionError("Введите корректную сумму > 0.");
       return;
     }
     if (formShareUserIds.length === 0) {
-      onError("Выбери хотя бы одного участника для деления расхода.");
+      reportSectionError("Выбери хотя бы одного участника для деления расхода.");
       return;
     }
     if (formSplitMode === "custom") {
@@ -319,7 +347,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
         return !Number.isFinite(value) || value <= 0;
       });
       if (invalidCustomAmount) {
-        onError("Для каждого выбранного участника нужно указать сумму > 0.");
+        reportSectionError("Для каждого выбранного участника нужно указать сумму > 0.");
         return;
       }
 
@@ -331,16 +359,19 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
       );
       const diff = round2(customTotal - amountNum);
       if (Math.abs(diff) >= 0.01) {
-        onError(`Сумма долей (${customTotal.toFixed(2)}) должна быть равна сумме расхода (${amountNum.toFixed(2)}).`);
+        reportSectionError(
+          `Сумма долей (${customTotal.toFixed(2)}) должна быть равна сумме расхода (${amountNum.toFixed(2)}).`
+        );
         return;
       }
     }
     if ((hasLat || hasLng) && !hasCoords) {
-      onError("Введите корректные координаты или очистите точку на карте.");
+      reportSectionError("Введите корректные координаты или очистите точку на карте.");
       return;
     }
 
     setIsSubmitting(true);
+    setSectionError(null);
     try {
       const payload: {
         title: string;
@@ -396,26 +427,17 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
           .then((expenseWithReceipt) => {
             mergeExpenseIntoList(expenseWithReceipt);
             unmarkReceiptUploading(nextExpense.id);
+            setSectionError(null);
           })
-          .catch(() => {
+          .catch((e: any) => {
             unmarkReceiptUploading(nextExpense.id);
-            onError("Расход добавлен, но чек загрузить не удалось.");
+            const message = extractErrorMessage(e, "Расход добавлен, но чек загрузить не удалось.");
+            reportSectionError(String(message));
           });
       }
     } catch (e: any) {
-      const data = e?.response?.data;
-      const message =
-        data?.detail ||
-        data?.non_field_errors?.[0] ||
-        data?.amount?.[0] ||
-        data?.currency?.[0] ||
-        data?.category_id?.[0] ||
-        data?.share_amounts?.[0] ||
-        data?.share_user_ids?.[0] ||
-        data?.lat?.[0] ||
-        data?.lng?.[0] ||
-        "Не удалось добавить расход. Проверь данные и попробуй снова.";
-      onError(String(message));
+      const message = extractErrorMessage(e, "Не удалось добавить расход. Проверь данные и попробуй снова.");
+      reportSectionError(String(message));
     } finally {
       setIsSubmitting(false);
     }
@@ -457,8 +479,10 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
     try {
       const updatedExpense = await uploadExpenseReceipt(tripId, ex.id, file);
       mergeExpenseIntoList(updatedExpense);
-    } catch {
-      onError("Не удалось загрузить чек.");
+      setSectionError(null);
+    } catch (e: any) {
+      const message = extractErrorMessage(e, "Не удалось загрузить чек.");
+      reportSectionError(String(message));
     } finally {
       unmarkReceiptUploading(ex.id);
       // чтобы можно было выбрать тот же файл повторно
@@ -468,8 +492,13 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
 
   const onOpenReceipt = (ex: Expense) => {
     if (!ex.receipt) return;
+    const absoluteReceiptUrl = toAbsUrl(ex.receipt);
+    if (isPdfUrl(absoluteReceiptUrl)) {
+      window.open(absoluteReceiptUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
     setReceiptTitle(ex.title);
-    setReceiptUrl(toAbsUrl(ex.receipt)); // делаем абсолютный URL
+    setReceiptUrl(absoluteReceiptUrl);
     setReceiptExpenseId(ex.id);
     setReceiptOpen(true);
   };
@@ -572,6 +601,12 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
           Расходы
         </Typography>
 
+        {sectionError ? (
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
+            {sectionError}
+          </Alert>
+        ) : null}
+
         {/* Форма добавления */}
         <Box component="form" onSubmit={onAddExpense} sx={{ mb: 2 }}>
           <Box
@@ -665,9 +700,10 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
               <input
                 type="file"
                 hidden
-                accept="image/*"
+                accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,.pdf"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
+                  setSectionError(null);
                   setFormReceiptFile(file);
                   e.currentTarget.value = "";
                 }}
@@ -948,10 +984,11 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
                       <input
                         type="file"
                         hidden
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,.pdf"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
+                          setSectionError(null);
                           onUploadReceipt(ex, file, e.currentTarget);
                         }}
                       />

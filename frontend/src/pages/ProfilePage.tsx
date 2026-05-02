@@ -93,8 +93,15 @@ export default function ProfilePage() {
       setAvatarFile(null);
 
       setStatus("success");
-    } catch (err) {
-      setError("Не удалось сохранить профиль.");
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const message =
+        data?.avatar?.[0] ||
+        data?.username?.[0] ||
+        data?.email?.[0] ||
+        data?.detail ||
+        "Не удалось сохранить профиль.";
+      setError(String(message));
       setStatus("idle");
     }
   };
@@ -154,7 +161,7 @@ export default function ProfilePage() {
                     ref={fileInputRef}
                     type="file"
                     hidden
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
                     onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
                   />
                 </Button>

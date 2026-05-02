@@ -4,6 +4,8 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 import re
 
+from common.file_validation import RussianImageField, validate_image_upload
+
 User = get_user_model()
 
 
@@ -56,6 +58,8 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    avatar = RussianImageField(required=False, allow_null=True)
+
     class Meta:
         model = User
         fields = ("id", "username", "email", "avatar")
@@ -79,8 +83,13 @@ class ProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Пользователь с таким email уже существует.")
         return value
 
+    def validate_avatar(self, value):
+        if value is None:
+            return value
+        return validate_image_upload(value, label="Аватар")
+
 
 class UserSearchSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "username", "email", "avatar")
+        fields = ("id", "username", "avatar")

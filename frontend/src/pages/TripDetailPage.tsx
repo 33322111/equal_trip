@@ -59,11 +59,12 @@ import { searchUsers } from "../api/users";
 import { API_BASE_URL } from "../config/runtime";
 
 const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
+const isPdfUrl = (url: string) => url.split("?")[0].toLowerCase().endsWith(".pdf");
 
 type UserShort = {
   id: number;
   username: string;
-  email: string;
+  email?: string;
   avatar?: string | null;
 };
 
@@ -387,8 +388,13 @@ export default function TripDetailPage() {
   // Receipt
   const onOpenReceipt = (ex: Expense) => {
     if (!ex.receipt) return;
+    const absoluteReceiptUrl = toAbsUrl(ex.receipt);
+    if (isPdfUrl(absoluteReceiptUrl)) {
+      window.open(absoluteReceiptUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
     setReceiptTitle(ex.title);
-    setReceiptUrl(toAbsUrl(ex.receipt));
+    setReceiptUrl(absoluteReceiptUrl);
     setReceiptExpenseId(ex.id);
     setReceiptOpen(true);
   };
@@ -719,7 +725,7 @@ export default function TripDetailPage() {
                 inputValue={userQuery}
                 onInputChange={(_, v) => setUserQuery(v)}
                 onChange={(_, v) => setSelectedUser(v)}
-                getOptionLabel={(u) => `${u.username} (${u.email})`}
+                getOptionLabel={(u) => u.username}
                 isOptionEqualToValue={(a, b) => a.id === b.id}
                 noOptionsText={userQuery.trim() ? "Ничего не найдено" : "Начни вводить никнейм"}
                 renderOption={(props, option) => (
@@ -735,9 +741,11 @@ export default function TripDetailPage() {
                       </Avatar>
                       <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ wordBreak: "break-word" }}>{option.username}</Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
-                          {option.email}
-                        </Typography>
+                        {option.email ? (
+                          <Typography variant="body2" color="text.secondary" sx={{ wordBreak: "break-word" }}>
+                            {option.email}
+                          </Typography>
+                        ) : null}
                       </Box>
                     </Box>
                   </li>

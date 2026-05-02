@@ -3,12 +3,22 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from users.password_reset_signals import password_reset_token_created
 
 User = get_user_model()
+
+VALID_GIF_BYTES = (
+    b"GIF89a\x01\x00\x01\x00\x80\x00\x00"
+    b"\x00\x00\x00\xff\xff\xff!"
+    b"\xf9\x04\x01\x00\x00\x00\x00,"
+    b"\x00\x00\x00\x00\x01\x00\x01\x00"
+    b"\x00\x02\x02D\x01\x00;"
+)
 
 
 class UsersApiTests(APITestCase):
@@ -125,6 +135,36 @@ class UsersApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["email"], "")
 
+    @override_settings(IMAGE_UPLOAD_MAX_BYTES=10)
+    def test_profile_patch_rejects_oversize_avatar(self):
+        self.client.force_authenticate(self.user)
+        avatar = SimpleUploadedFile("avatar.gif", VALID_GIF_BYTES, content_type="image/gif")
+
+        response = self.client.patch(
+            "/api/profile/",
+            {"avatar": avatar},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("avatar", response.data)
+
+    def test_profile_patch_rejects_invalid_avatar_with_russian_message(self):
+        self.client.force_authenticate(self.user)
+        avatar = SimpleUploadedFile("avatar.jpg", b"broken-avatar", content_type="image/jpeg")
+
+        response = self.client.patch(
+            "/api/profile/",
+            {"avatar": avatar},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["avatar"][0],
+            "Загрузите корректное изображение. Файл поврежден или не является изображением.",
+        )
+
     def test_user_search_requires_auth(self):
         response = self.client.get("/api/users/search/?q=iv")
         self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
@@ -145,6 +185,7 @@ class UsersApiTests(APITestCase):
 
         usernames = [row["username"] for row in response.data]
         self.assertEqual(usernames, sorted(usernames))
+        self.assertNotIn("email", response.data[0])
 
     def test_user_search_empty_query_returns_empty(self):
         self.client.force_authenticate(self.user)

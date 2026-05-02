@@ -23,7 +23,11 @@ from .fx import get_all_currencies
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = ExpenseCategory.objects.all().order_by("name")
     serializer_class = CategorySerializer
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
 
 
 class TripExpenseViewSet(viewsets.ModelViewSet):

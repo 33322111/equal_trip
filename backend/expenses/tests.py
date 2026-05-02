@@ -7,7 +7,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from reportlab.lib import colors
 from rest_framework import serializers
@@ -32,12 +32,23 @@ from trips.models import Trip, TripMember
 
 User = get_user_model()
 
+VALID_GIF_BYTES = (
+    b"GIF89a\x01\x00\x01\x00\x80\x00\x00"
+    b"\x00\x00\x00\xff\xff\xff!"
+    b"\xf9\x04\x01\x00\x00\x00\x00,"
+    b"\x00\x00\x00\x00\x01\x00\x01\x00"
+    b"\x00\x02\x02D\x01\x00;"
+)
+
+VALID_PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
+
 
 class ExpensesApiTests(APITestCase):
     def setUp(self):
         self.owner = User.objects.create_user("owner_exp", "owner_exp@example.com", "StrongPass1!")
         self.member = User.objects.create_user("member_exp", "member_exp@example.com", "StrongPass1!")
         self.outsider = User.objects.create_user("outsider_exp", "outsider_exp@example.com", "StrongPass1!")
+        self.admin = User.objects.create_superuser("admin_exp", "admin_exp@example.com", "StrongPass1!")
 
         self.trip = Trip.objects.create(
             title="Trip expenses",
@@ -203,13 +214,7 @@ class ExpensesApiTests(APITestCase):
 
         receipt = SimpleUploadedFile(
             "receipt.gif",
-            (
-                b"GIF89a\x01\x00\x01\x00\x80\x00\x00"
-                b"\x00\x00\x00\xff\xff\xff!"
-                b"\xf9\x04\x01\x00\x00\x00\x00,"
-                b"\x00\x00\x00\x00\x01\x00\x01\x00"
-                b"\x00\x02\x02D\x01\x00;"
-            ),
+            VALID_GIF_BYTES,
             content_type="image/gif",
         )
 
@@ -226,6 +231,99 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(response.data["category"]["id"], self.category.id)
         self.assertEqual(len(response.data["shares"]), 2)
         self.assertEqual(Decimal(response.data["amount_rub"]), Decimal("100.00"))
+
+    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    def test_upload_pdf_receipt_returns_full_expense_payload(self, _):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="PDF receipt expense",
+            amount=Decimal("100.00"),
+            currency="RUB",
+            amount_rub=Decimal("100.00"),
+            fx_rate=Decimal("1.000000"),
+            category=self.category,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("60.00"))
+        ExpenseShare.objects.create(expense=expense, user=self.member, weight=Decimal("40.00"))
+
+        receipt = SimpleUploadedFile(
+            "receipt.pdf",
+            VALID_PDF_BYTES,
+            content_type="application/pdf",
+        )
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/expenses/{expense.id}/",
+            {"receipt": receipt},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["receipt"].endswith(".pdf"))
+        self.assertEqual(response.data["created_by"]["id"], self.owner.id)
+        self.assertEqual(response.data["category"]["id"], self.category.id)
+        self.assertEqual(len(response.data["shares"]), 2)
+        self.assertEqual(Decimal(response.data["amount_rub"]), Decimal("100.00"))
+
+    @override_settings(IMAGE_UPLOAD_MAX_BYTES=10)
+    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    def test_upload_receipt_rejects_oversize_file(self, _):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Big receipt expense",
+            amount=Decimal("100.00"),
+            currency="RUB",
+            amount_rub=Decimal("100.00"),
+            fx_rate=Decimal("1.000000"),
+            category=self.category,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("60.00"))
+        ExpenseShare.objects.create(expense=expense, user=self.member, weight=Decimal("40.00"))
+
+        receipt = SimpleUploadedFile("receipt.gif", VALID_GIF_BYTES, content_type="image/gif")
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/expenses/{expense.id}/",
+            {"receipt": receipt},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("receipt", response.data)
+
+    @patch("expenses.serializers.get_rate_to_rub", return_value=Decimal("1.000000"))
+    def test_upload_receipt_rejects_invalid_image_with_russian_message(self, _):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Broken receipt expense",
+            amount=Decimal("100.00"),
+            currency="RUB",
+            amount_rub=Decimal("100.00"),
+            fx_rate=Decimal("1.000000"),
+            category=self.category,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("60.00"))
+        ExpenseShare.objects.create(expense=expense, user=self.member, weight=Decimal("40.00"))
+
+        receipt = SimpleUploadedFile("receipt.jpg", b"not-an-image", content_type="image/jpeg")
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/expenses/{expense.id}/",
+            {"receipt": receipt},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["receipt"][0],
+            "Загрузите корректное изображение. Файл поврежден или не является изображением.",
+        )
 
     def test_delete_expense(self):
         expense = Expense.objects.create(
@@ -255,6 +353,32 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         names = [row["name"] for row in response.data]
         self.assertEqual(sorted(names), names)
+
+    def test_categories_write_forbidden_for_regular_user(self):
+        self.auth(self.owner)
+
+        create_response = self.client.post("/api/categories/", {"name": "Housing"}, format="json")
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        patch_response = self.client.patch(f"/api/categories/{self.category.id}/", {"name": "Renamed"}, format="json")
+        self.assertEqual(patch_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        delete_response = self.client.delete(f"/api/categories/{self.category.id}/")
+        self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_categories_write_allowed_for_admin(self):
+        self.auth(self.admin)
+
+        create_response = self.client.post("/api/categories/", {"name": "Housing"}, format="json")
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        category_id = create_response.data["id"]
+
+        patch_response = self.client.patch(f"/api/categories/{category_id}/", {"name": "Accommodation"}, format="json")
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_response.data["name"], "Accommodation")
+
+        delete_response = self.client.delete(f"/api/categories/{category_id}/")
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
 
     @patch("expenses.views.get_all_currencies")
     def test_currencies_endpoint_sorted(self, mocked):

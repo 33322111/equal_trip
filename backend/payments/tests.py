@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -10,6 +11,8 @@ from payments.models import Settlement
 from trips.models import Trip, TripMember
 
 User = get_user_model()
+
+VALID_PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
 
 
 class PaymentsApiTests(APITestCase):
@@ -108,7 +111,7 @@ class PaymentsApiTests(APITestCase):
     def test_confirm_settlement_with_proof_file(self):
         settlement = self.create_settlement()
         self.auth(self.owner)
-        proof = SimpleUploadedFile("proof.txt", b"payment proof", content_type="text/plain")
+        proof = SimpleUploadedFile("proof.pdf", VALID_PDF_BYTES, content_type="application/pdf")
         response = self.client.post(
             f"/api/trips/{self.trip.id}/settlements/{settlement.id}/confirm/",
             {"proof": proof},
@@ -119,6 +122,33 @@ class PaymentsApiTests(APITestCase):
         settlement.refresh_from_db()
         self.assertEqual(settlement.status, Settlement.Status.CONFIRMED)
         self.assertTrue(bool(settlement.proof))
+
+    def test_confirm_settlement_rejects_invalid_proof_type(self):
+        settlement = self.create_settlement()
+        self.auth(self.owner)
+        proof = SimpleUploadedFile("proof.exe", b"payload", content_type="application/octet-stream")
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/settlements/{settlement.id}/confirm/",
+            {"proof": proof},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("proof", response.data)
+
+    @override_settings(DOCUMENT_UPLOAD_MAX_BYTES=10)
+    def test_confirm_settlement_rejects_oversize_proof(self):
+        settlement = self.create_settlement()
+        self.auth(self.owner)
+        proof = SimpleUploadedFile("proof.pdf", VALID_PDF_BYTES, content_type="application/pdf")
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/settlements/{settlement.id}/confirm/",
+            {"proof": proof},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("proof", response.data)
 
     def test_delete_settlement(self):
         settlement = self.create_settlement()

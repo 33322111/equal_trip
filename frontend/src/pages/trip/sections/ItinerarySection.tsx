@@ -116,6 +116,18 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
   }, [days]);
 
   const activeDayDate = useMemo(() => days.find((d) => d.id === activeDayId)?.date ?? null, [days, activeDayId]);
+  const createTimeInvalid = useMemo(() => {
+    const fromMinutes = timeToMinutes(itFrom);
+    const toMinutes = timeToMinutes(itTo);
+    if (fromMinutes === null || toMinutes === null) return false;
+    return toMinutes < fromMinutes;
+  }, [itFrom, itTo]);
+  const editTimeInvalid = useMemo(() => {
+    const fromMinutes = timeToMinutes(editActivityFrom);
+    const toMinutes = timeToMinutes(editActivityTo);
+    if (fromMinutes === null || toMinutes === null) return false;
+    return toMinutes < fromMinutes;
+  }, [editActivityFrom, editActivityTo]);
 
   const reloadDays = async () => {
     const ds = await listDays(tripId);
@@ -204,6 +216,10 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
   const onAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeDayId || !itTitle.trim()) return;
+    if (createTimeInvalid) {
+      onError("Время окончания не может быть раньше времени начала.");
+      return;
+    }
 
     try {
       await createDayItem(tripId, activeDayId, {
@@ -268,8 +284,8 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
       onError("Введите название активности.");
       return;
     }
-    if (editActivityFrom && editActivityTo && editActivityFrom > editActivityTo) {
-      onError("Время начала не может быть позже времени окончания.");
+    if (editTimeInvalid) {
+      onError("Время окончания не может быть раньше времени начала.");
       return;
     }
 
@@ -458,6 +474,12 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
                 <>
                   <Box component="form" onSubmit={onAddItem} sx={{ mb: 2 }}>
                     <Stack spacing={1.5}>
+                      {createTimeInvalid ? (
+                        <Alert severity="error" variant="outlined">
+                          Время окончания не может быть раньше времени начала.
+                        </Alert>
+                      ) : null}
+
                       <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                         <TextField
                           label="Активность"
@@ -483,7 +505,8 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
                             value={itTo}
                             onChange={(e) => setItTo(e.target.value)}
                             InputLabelProps={{ shrink: true }}
-                            inputProps={{ step: 60 }}
+                            inputProps={{ step: 60, min: itFrom || undefined }}
+                            error={createTimeInvalid}
                             sx={{ width: { xs: "100%", sm: 140 } }}
                           />
                         </Stack>
@@ -502,6 +525,7 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
                         <Button
                           type="submit"
                           variant="contained"
+                          disabled={createTimeInvalid}
                           sx={{ width: { xs: "100%", md: 180 }, height: { md: 56 } }}
                         >
                           Добавить
@@ -598,6 +622,12 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
         <DialogTitle>Редактировать активность</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 0.5 }}>
+            {editTimeInvalid ? (
+              <Alert severity="error" variant="outlined">
+                Время окончания не может быть раньше времени начала.
+              </Alert>
+            ) : null}
+
             <TextField
               label="Активность"
               value={editActivityTitle}
@@ -621,7 +651,8 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
                 value={editActivityTo}
                 onChange={(e) => setEditActivityTo(e.target.value)}
                 InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 60 }}
+                inputProps={{ step: 60, min: editActivityFrom || undefined }}
+                error={editTimeInvalid}
                 fullWidth
               />
             </Stack>
@@ -651,7 +682,7 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
           <Button
             variant="contained"
             onClick={onSaveEditedActivity}
-            disabled={editActivitySaving || !editActivityTitle.trim()}
+            disabled={editActivitySaving || !editActivityTitle.trim() || editTimeInvalid}
           >
             Сохранить
           </Button>

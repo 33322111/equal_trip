@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from common.file_validation import RussianFileField, validate_receipt_upload
 from trips.models import Trip, TripMember
 from .models import Expense, ExpenseCategory, ExpenseShare
 from .fx import get_rate_to_rub
@@ -192,7 +193,7 @@ class ExpenseUpdateSerializer(serializers.ModelSerializer):
     share_amounts = ShareAmountInputSerializer(many=True, required=False)
     lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
     lng = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
-    receipt = serializers.ImageField(required=False, allow_null=True)
+    receipt = RussianFileField(required=False, allow_null=True)
 
     class Meta:
         model = Expense
@@ -208,6 +209,11 @@ class ExpenseUpdateSerializer(serializers.ModelSerializer):
             "share_amounts",
             "receipt",
         )
+
+    def validate_receipt(self, value):
+        if value is None:
+            return value
+        return validate_receipt_upload(value, label="Чек")
 
     def update(self, instance: Expense, validated_data):
         category_id = validated_data.pop("category_id", None)

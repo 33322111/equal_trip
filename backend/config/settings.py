@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -154,6 +155,8 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+IMAGE_UPLOAD_MAX_BYTES = int(os.getenv("IMAGE_UPLOAD_MAX_BYTES", str(5 * 1024 * 1024)))
+DOCUMENT_UPLOAD_MAX_BYTES = int(os.getenv("DOCUMENT_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
 
 OPENEXCHANGERATES_API_KEY = os.getenv("OPENEXCHANGERATES_API_KEY", "e3888ae5b7854938a4367005549bedc7")
 
@@ -165,4 +168,6 @@ EMAIL_PORT = 465
 EMAIL_USE_SSL = True
 EMAIL_USE_TLS = False
 EMAIL_HOST_PASSWORD = os.getenv("YANDEX_SMTP_PASSWORD")
-EMAIL_TIMEOUT = 2  # секунды
+EMAIL_TIMEOUT = 15  # секунды
+EMAIL_NOTIFICATIONS_ASYNC = os.getenv("EMAIL_NOTIFICATIONS_ASYNC", "0" if "test" in sys.argv else "1").strip().lower() in {"1", "true", "yes", "on"}
+EMAIL_NOTIFICATION_MAX_WORKERS = int(os.getenv("EMAIL_NOTIFICATION_MAX_WORKERS", "2"))
