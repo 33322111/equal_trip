@@ -10,9 +10,17 @@ class IsTripMember(BasePermission):
     """
 
     def has_permission(self, request, view):
-        # Никогда не режем доступ здесь
-        # иначе ломаются create/list/retrieve
-        return True
+        trip_id = view.kwargs.get("trip_id")
+        if trip_id is None:
+            return True
+
+        if not getattr(request.user, "is_authenticated", False):
+            return False
+
+        if TripMember.objects.filter(trip_id=trip_id, user=request.user).exists():
+            return True
+
+        return not Trip.objects.filter(pk=trip_id).exists()
 
     def has_object_permission(self, request, view, obj):
         """

@@ -196,6 +196,34 @@ class ItineraryApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_non_member_cannot_list_or_create_days(self):
+        self.auth(self.outsider)
+
+        list_response = self.client.get(f"/api/trips/{self.trip.id}/days/")
+        self.assertEqual(list_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        create_response = self.client.post(
+            f"/api/trips/{self.trip.id}/days/",
+            {"date": str(date.today()), "title": "Hack day"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_member_cannot_list_or_create_day_items(self):
+        day = self.create_day()
+
+        self.auth(self.outsider)
+
+        list_response = self.client.get(f"/api/trips/{self.trip.id}/days/{day.id}/items/")
+        self.assertEqual(list_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        create_response = self.client.post(
+            f"/api/trips/{self.trip.id}/days/{day.id}/items/",
+            {"title": "Hack activity"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_create_item_with_null_assignee(self):
         day = self.create_day()
         self.auth(self.owner)

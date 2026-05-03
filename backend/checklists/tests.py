@@ -153,6 +153,34 @@ class ChecklistsApiTests(APITestCase):
         response = self.client.get(f"/api/trips/{self.trip.id}/checklists/{checklist.id}/items/{item.id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_non_member_cannot_list_or_create_checklists(self):
+        self.auth(self.outsider)
+
+        list_response = self.client.get(f"/api/trips/{self.trip.id}/checklists/")
+        self.assertEqual(list_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        create_response = self.client.post(
+            f"/api/trips/{self.trip.id}/checklists/",
+            {"title": "Hack list"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_member_cannot_list_or_create_checklist_items(self):
+        checklist = self.create_checklist()
+
+        self.auth(self.outsider)
+
+        list_response = self.client.get(f"/api/trips/{self.trip.id}/checklists/{checklist.id}/items/")
+        self.assertEqual(list_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        create_response = self.client.post(
+            f"/api/trips/{self.trip.id}/checklists/{checklist.id}/items/",
+            {"title": "Hack task"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_create_and_update_item_with_null_assignee(self):
         checklist = self.create_checklist()
         self.auth(self.owner)
