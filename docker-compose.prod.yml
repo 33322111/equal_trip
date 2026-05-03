@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_FILE:-.env.prod}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ${APP_ENV_FILE:-.env.prod}
+    environment:
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DB_NAME: ${POSTGRES_DB}
+      DJANGO_DB_USER: ${POSTGRES_USER}
+      DJANGO_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DJANGO_DB_HOST: db
+      DJANGO_DB_PORT: "5432"
+      FRONTEND_URL: ${FRONTEND_URL}
+      OPENEXCHANGERATES_API_KEY: ${OPENEXCHANGERATES_API_KEY}
+      YANDEX_SMTP_USER: ${YANDEX_SMTP_USER}
+      YANDEX_SMTP_FROM: ${YANDEX_SMTP_FROM}
+      YANDEX_SMTP_PASSWORD: ${YANDEX_SMTP_PASSWORD}
+      VITE_YMAPS_API_KEY: ${VITE_YMAPS_API_KEY}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-60}
+    volumes:
+      - backend_media:/app/media
+      - backend_static:/app/staticfiles
+
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.caddy
+    restart: unless-stopped
+    depends_on:
+      - backend
+    env_file:
+      - ${APP_ENV_FILE:-.env.prod}
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - backend_media:/srv/media
+      - backend_static:/srv/static
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  backend_media:
+  backend_static:
+  caddy_data:
+  caddy_config:

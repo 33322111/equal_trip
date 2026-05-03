@@ -1,0 +1,31 @@
+{$DOMAIN} {
+    encode gzip zstd
+
+    @api path /api/*
+    handle @api {
+        reverse_proxy backend:8000
+    }
+
+    @admin path /admin/*
+    handle @admin {
+        reverse_proxy backend:8000
+    }
+
+    @static path /static/*
+    handle @static {
+        root * /srv
+        file_server
+    }
+
+    @media path /media/*
+    handle @media {
+        root * /srv
+        file_server
+    }
+
+    handle {
+        root * /srv/frontend
+        try_files {path} /index.html
+        file_server
+    }
+}
