@@ -7,6 +7,8 @@ __pycache__/
 .env
 .env.local
 .env.*
+!.env.example
+!.env.prod.example
 
 
 # --- Django specific ---
