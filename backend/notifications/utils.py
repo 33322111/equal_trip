@@ -40,7 +40,14 @@ def format_date_value(value: date | None) -> str:
     return value.strftime("%d.%m.%Y")
 
 
-def format_datetime_value(value: datetime | None, include_time: bool = True) -> str:
+def format_datetime_value(
+    value: datetime | None,
+    include_time: bool = True,
+    date_only_value: date | None = None,
+) -> str:
+    if not include_time and date_only_value is not None:
+        return date_only_value.strftime("%d.%m.%Y")
+
     if value is None:
         return "не указано"
 

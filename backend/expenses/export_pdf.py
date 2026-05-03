@@ -32,7 +32,9 @@ def _q2(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _fmt_dt(value, include_time: bool = True) -> str:
+def _fmt_dt(value, include_time: bool = True, date_only_value=None) -> str:
+    if not include_time and date_only_value is not None:
+        return date_only_value.strftime("%Y-%m-%d")
     if not value:
         return "—"
     if include_time:
@@ -331,7 +333,11 @@ def export_trip_pdf(trip: Trip):
                     f"{_fmt_money(e.amount)} {e.currency}",
                     _fmt_money(e.amount_rub),
                     _short(e.created_by.username, 14),
-                    _fmt_dt(e.spent_at, include_time=e.spent_time_known) if e.spent_at else _fmt_dt(e.created_at),
+                    _fmt_dt(
+                        e.spent_at,
+                        include_time=e.spent_time_known,
+                        date_only_value=e.spent_date_local,
+                    ) if e.spent_at or e.spent_date_local else _fmt_dt(e.created_at),
                     "Да" if e.receipt else "Нет",
                     "Да" if e.lat is not None and e.lng is not None else "Нет",
                 ]

@@ -40,6 +40,10 @@ function toLocalDateInputValue(value: string | null | undefined) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function resolveDateInputValue(localDate: string | null | undefined, fallbackDateTime: string | null | undefined) {
+  return localDate || toLocalDateInputValue(fallbackDateTime);
+}
+
 function toLocalTimeInputValue(value: string | null | undefined, includeTime: boolean) {
   if (!value || !includeTime) return "";
   const date = new Date(value);
@@ -105,7 +109,7 @@ export default function ExpenseEditDialog({
     setTitle(expense.title);
     setAmount(String(expense.amount));
     setCurrency(expense.currency);
-    setSpentDate(toLocalDateInputValue(expense.spent_at));
+    setSpentDate(resolveDateInputValue(expense.spent_date_local, expense.spent_at));
     setSpentTime(toLocalTimeInputValue(expense.spent_at, expense.spent_time_known));
     setCategoryId(expense.category?.id ?? "");
     setFormError(null);

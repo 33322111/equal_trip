@@ -34,7 +34,20 @@ function formatAmount(value: number | null) {
   }).format(round2(value));
 }
 
-function formatExpenseDate(value: string | null, includeTime = true) {
+function formatDateOnlyValue(value: string | null | undefined) {
+  if (!value) return "Дата не указана";
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return "Дата не указана";
+  const [year, month, day] = parts;
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "medium",
+  }).format(new Date(year, month - 1, day));
+}
+
+function formatExpenseDate(value: string | null, includeTime = true, localDate?: string | null) {
+  if (!includeTime && localDate) {
+    return formatDateOnlyValue(localDate);
+  }
   if (!value) return "Дата не указана";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Дата не указана";
@@ -131,7 +144,10 @@ export default function ExpenseDetailsPanel({ expense }: Props) {
       <Typography>Автор: {expense.created_by.username}</Typography>
       <Typography>Почта автора: {expense.created_by.email || "—"}</Typography>
       <Typography>
-        Дата расхода: {expense.spent_at ? formatExpenseDate(expense.spent_at, expense.spent_time_known) : "не указана"}
+        Дата расхода:{" "}
+        {expense.spent_at || expense.spent_date_local
+          ? formatExpenseDate(expense.spent_at, expense.spent_time_known, expense.spent_date_local)
+          : "не указана"}
       </Typography>
       <Typography>Время добавления: {formatExpenseDate(expense.created_at)}</Typography>
       {expense.currency.toUpperCase() !== "RUB" ? (

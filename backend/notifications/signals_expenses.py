@@ -17,7 +17,7 @@ def expense_created_or_updated(sender, instance: Expense, created, **kwargs):
         f"Категория: {category_name}",
         f"Сумма: {instance.amount} {instance.currency}",
         f"Сумма в RUB: {instance.amount_rub} RUB",
-        f"Дата расхода: {format_datetime_value(instance.spent_at, include_time=instance.spent_time_known)}",
+        f"Дата расхода: {format_datetime_value(instance.spent_at, include_time=instance.spent_time_known, date_only_value=instance.spent_date_local)}",
         f"Чек: {'прикреплён' if bool(instance.receipt) else 'не прикреплён'}",
     ]
     if instance.lat is not None and instance.lng is not None:
@@ -48,7 +48,7 @@ def expense_deleted(sender, instance: Expense, **kwargs):
             f"Категория: {category_name}",
             f"Сумма: {instance.amount} {instance.currency}",
             f"Сумма в RUB: {instance.amount_rub} RUB",
-            f"Дата расхода: {format_datetime_value(instance.spent_at, include_time=instance.spent_time_known)}",
+            f"Дата расхода: {format_datetime_value(instance.spent_at, include_time=instance.spent_time_known, date_only_value=instance.spent_date_local)}",
         ],
     )
 

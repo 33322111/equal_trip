@@ -97,29 +97,35 @@ def _resolve_spent_datetime(validated_data, *, request=None):
             if spent_at:
                 spent_at = _ensure_aware_in_timezone(spent_at, client_tz)
                 validated_data["spent_at"] = spent_at
+                validated_data["spent_date_local"] = spent_at.astimezone(client_tz).date()
+            else:
+                validated_data["spent_date_local"] = None
             if spent_at and spent_at.astimezone(client_tz).date() > today:
-                raise serializers.ValidationError({"spent_date": "Дата расхода не может быть в будущем."})
+                raise serializers.ValidationError({"spent_date": ["Дата расхода не может быть в будущем."]})
             validated_data["spent_time_known"] = bool(validated_data["spent_at"])
         return
 
     if spent_date in (serializers.empty, None):
         if spent_time not in (serializers.empty, None):
-            raise serializers.ValidationError({"spent_time": "Укажите дату расхода, если задаёте время."})
+            raise serializers.ValidationError({"spent_time": ["Укажите дату расхода, если задаёте время."]})
         validated_data["spent_at"] = None
+        validated_data["spent_date_local"] = None
         validated_data["spent_time_known"] = False
         return
 
     if spent_date > today:
-        raise serializers.ValidationError({"spent_date": "Дата расхода не может быть в будущем."})
+        raise serializers.ValidationError({"spent_date": ["Дата расхода не может быть в будущем."]})
 
     if spent_time in (serializers.empty, None):
         spent_at = timezone.make_aware(datetime.combine(spent_date, time.min), client_tz)
         validated_data["spent_at"] = spent_at
+        validated_data["spent_date_local"] = spent_date
         validated_data["spent_time_known"] = False
         return
 
     spent_at = timezone.make_aware(datetime.combine(spent_date, spent_time), client_tz)
     validated_data["spent_at"] = spent_at
+    validated_data["spent_date_local"] = spent_date
     validated_data["spent_time_known"] = True
 
 
@@ -189,6 +195,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "fx_rate",
             "amount_rub",
             "category",
+            "spent_date_local",
             "spent_at",
             "spent_time_known",
             "lat",
@@ -198,7 +205,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             "created_at",
             "shares",
         )
-        read_only_fields = ("trip", "created_by", "created_at", "fx_rate", "amount_rub")
+        read_only_fields = ("trip", "created_by", "created_at", "fx_rate", "amount_rub", "spent_date_local")
 
 
 class ExpenseCreateSerializer(serializers.ModelSerializer):

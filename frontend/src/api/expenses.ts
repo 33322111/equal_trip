@@ -7,6 +7,7 @@ export type Expense = {
   title: string;
   amount: string;
   currency: string;
+  spent_date_local: string | null;
   spent_at: string | null;
   spent_time_known: boolean;
   created_at: string;

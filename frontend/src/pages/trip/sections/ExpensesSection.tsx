@@ -99,7 +99,24 @@ function round2(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function formatExpenseDateShort(value: string | null | undefined, includeTime = true) {
+function formatDateOnlyValue(value: string | null | undefined) {
+  if (!value) return null;
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "medium",
+  }).format(new Date(year, month - 1, day));
+}
+
+function formatExpenseDateShort(
+  value: string | null | undefined,
+  includeTime = true,
+  localDate?: string | null,
+) {
+  if (!includeTime && localDate) {
+    return formatDateOnlyValue(localDate);
+  }
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -1030,9 +1047,9 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
                       {ex.category ? ex.category.name : "Без категории"} • оплатил: {ex.created_by.username}
                     </Typography>
 
-                    {ex.spent_at ? (
+                    {ex.spent_at || ex.spent_date_local ? (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                        Дата расхода: {formatExpenseDateShort(ex.spent_at, ex.spent_time_known)}
+                        Дата расхода: {formatExpenseDateShort(ex.spent_at, ex.spent_time_known, ex.spent_date_local)}
                       </Typography>
                     ) : null}
 

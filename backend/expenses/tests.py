@@ -1,5 +1,5 @@
 import csv
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 from io import StringIO
 from unittest.mock import patch
@@ -109,9 +109,11 @@ class ExpensesApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertFalse(response.data["spent_time_known"])
+        self.assertEqual(response.data["spent_date_local"], "2026-05-02")
         expense = Expense.objects.get(id=response.data["id"])
         self.assertFalse(expense.spent_time_known)
         self.assertIsNotNone(expense.spent_at)
+        self.assertEqual(str(expense.spent_date_local), "2026-05-02")
 
     @patch("expenses.serializers.get_rate_to_rub_fast", return_value=Decimal("1.000000"))
     def test_create_expense_rejects_time_without_date(self, _):
@@ -878,6 +880,27 @@ class ExpenseUnitLogicTests(TestCase):
         self.assertEqual(_split_mode([]), "none")
         self.assertIn("0.00 RUB", text)
 
+    def test_export_csv_uses_explicit_local_date_for_date_only_expense(self):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="CSV local date",
+            amount=Decimal("10.00"),
+            currency="RUB",
+            amount_rub=Decimal("10.00"),
+            fx_rate=Decimal("1.000000"),
+            category=self.category,
+            spent_at=datetime(2026, 5, 2, 16, 0, tzinfo=dt_timezone.utc),
+            spent_date_local=date(2026, 5, 3),
+            spent_time_known=False,
+        )
+        ExpenseShare.objects.create(expense=expense, user=self.owner, weight=Decimal("1.00"))
+
+        response = export_trip_csv(self.trip)
+        text = response.content.decode("utf-8-sig")
+
+        self.assertIn("2026-05-03", text)
+
     def test_export_csv_totals_by_user_use_split_amounts(self):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -1002,6 +1025,7 @@ class ExpensePdfTests(TestCase):
 
     def test_pdf_helpers(self):
         self.assertEqual(_fmt_dt(None), "—")
+        self.assertEqual(_fmt_dt(None, include_time=False, date_only_value=date(2026, 5, 3)), "2026-05-03")
         self.assertEqual(_short("abcdef", 4), "abc…")
         self.assertEqual(pdf_to_decimal(None), Decimal("0"))
         self.assertIsNone(_build_horizontal_bar_chart("Chart", [], 200, 100, colors.HexColor("#2563eb")))

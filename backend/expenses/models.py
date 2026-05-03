@@ -19,6 +19,7 @@ class Expense(models.Model):
     currency = models.CharField(max_length=8, default="RUB")
 
     category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name="expenses")
+    spent_date_local = models.DateField(null=True, blank=True)
     spent_at = models.DateTimeField(null=True, blank=True)
     spent_time_known = models.BooleanField(default=True)
 
