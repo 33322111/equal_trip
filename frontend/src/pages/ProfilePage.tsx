@@ -11,8 +11,10 @@ import {
 } from "@mui/material";
 import { getProfile, updateProfile, Profile } from "../api/profile";
 import { API_BASE_URL } from "../config/runtime";
+import { useAuth } from "../context/AuthContext";
 
 export default function ProfilePage() {
+  const { updateCurrentUser } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
 
   const [username, setUsername] = useState("");
@@ -86,6 +88,7 @@ export default function ProfilePage() {
 
       const updated = await updateProfile(form);
       setProfile(updated);
+      updateCurrentUser(updated);
 
       // сохранено -> сбрасываем локальное превью
       if (avatarPreviewUrl) URL.revokeObjectURL(avatarPreviewUrl);

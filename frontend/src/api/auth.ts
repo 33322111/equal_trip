@@ -15,6 +15,8 @@ export interface User {
   id: number;
   username: string;
   email: string;
+  avatar?: string | null;
+  avatarVersion?: number;
 }
 
 export async function login(payload: LoginPayload) {

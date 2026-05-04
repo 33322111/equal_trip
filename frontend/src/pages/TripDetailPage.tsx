@@ -61,6 +61,35 @@ import { API_BASE_URL } from "../config/runtime";
 const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
 const isPdfUrl = (url: string) => url.split("?")[0].toLowerCase().endsWith(".pdf");
 
+const copyTextFallback = (text: string) => {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, text.length);
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("Clipboard copy failed");
+  }
+};
+
+const copyTextToClipboard = async (text: string) => {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+    }
+  }
+  copyTextFallback(text);
+};
+
 type UserShort = {
   id: number;
   username: string;
@@ -328,7 +357,11 @@ export default function TripDetailPage() {
       const { token } = await createInvite(tripId);
       const url = `${window.location.origin}/join/${token}`;
       setInviteUrl(url);
-      await navigator.clipboard.writeText(url);
+      try {
+        await copyTextToClipboard(url);
+      } catch {
+        setError("Приглашение создано, но ссылку не удалось скопировать автоматически. Скопируйте ее вручную ниже.");
+      }
     } catch {
       setError("Не удалось создать приглашение.");
     }

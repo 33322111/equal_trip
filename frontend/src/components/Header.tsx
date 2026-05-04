@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   AppBar,
@@ -19,7 +19,6 @@ import LuggageIcon from "@mui/icons-material/Luggage";
 import LogoutIcon from "@mui/icons-material/Logout";
 
 import { useAuth } from "../context/AuthContext";
-import { getProfile } from "../api/profile";
 import { API_BASE_URL } from "../config/runtime";
 
 export default function Header() {
@@ -29,36 +28,12 @@ export default function Header() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
 
-  const [avatar, setAvatar] = useState<string | null>(null);
-
   const avatarUrl = useMemo(() => {
-    if (!avatar) return undefined;
-    return avatar.startsWith("http") ? avatar : `${API_BASE_URL}${avatar}`;
-  }, [avatar]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!isAuthenticated) {
-      setAvatar(null);
-      return;
-    }
-
-    getProfile()
-      .then((p) => {
-        if (cancelled) return;
-        setAvatar(p?.avatar ?? null);
-      })
-      .catch(() => {
-        // если не удалось – просто оставим букву
-        if (cancelled) return;
-        setAvatar(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated]);
+    if (!user?.avatar) return undefined;
+    const baseUrl = user.avatar.startsWith("http") ? user.avatar : `${API_BASE_URL}${user.avatar}`;
+    const separator = baseUrl.includes("?") ? "&" : "?";
+    return `${baseUrl}${separator}v=${user.avatarVersion ?? 0}`;
+  }, [user?.avatar, user?.avatarVersion]);
 
   const onLogout = () => {
     logout();

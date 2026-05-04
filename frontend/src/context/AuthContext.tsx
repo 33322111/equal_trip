@@ -8,6 +8,7 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  updateCurrentUser: (next: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -15,6 +16,11 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const normalizeUser = (nextUser: User): User => ({
+    ...nextUser,
+    avatarVersion: nextUser.avatarVersion ?? 0,
+  });
 
   useEffect(() => {
     const accessToken = localStorage.getItem('accessToken');
@@ -26,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     getMe()
-      .then((u) => setUser(u))
+      .then((u) => setUser(normalizeUser(u)))
       .catch(() => {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
@@ -39,7 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('accessToken', data.access);
     localStorage.setItem('refreshToken', data.refresh);
     const u = await getMe();
-    setUser(u);
+    setUser(normalizeUser(u));
   };
 
   const handleRegister = async (username: string, email: string, password: string) => {
@@ -53,6 +59,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
+  const updateCurrentUser = (next: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const avatarChanged = Object.prototype.hasOwnProperty.call(next, "avatar") && next.avatar !== prev.avatar;
+      return {
+        ...prev,
+        ...next,
+        avatarVersion: avatarChanged ? Date.now() : (next.avatarVersion ?? prev.avatarVersion ?? 0),
+      };
+    });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -62,6 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login: handleLogin,
         register: handleRegister,
         logout,
+        updateCurrentUser,
       }}
     >
       {children}
