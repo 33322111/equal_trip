@@ -192,7 +192,7 @@ class TripChecklistItemViewSet(viewsets.ModelViewSet):
         item = self.get_object()
         text = (request.data.get("text") or "").strip()
         if not text:
-            return Response({"detail": "text is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Текст комментария обязателен."}, status=status.HTTP_400_BAD_REQUEST)
 
         comment = ChecklistComment.objects.create(item=item, user=request.user, text=text)
         subject = f"[EqualTrip] Новый комментарий к задаче в поездке «{item.checklist.trip.title}»"
@@ -228,7 +228,7 @@ class TripChecklistItemViewSet(viewsets.ModelViewSet):
         if request.method == "PATCH":
             text = (request.data.get("text") or "").strip()
             if not text:
-                return Response({"detail": "text is required"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": "Текст комментария обязателен."}, status=status.HTTP_400_BAD_REQUEST)
             comment.text = text
             comment.save(update_fields=["text"])
             return Response(ChecklistCommentSerializer(comment).data, status=status.HTTP_200_OK)

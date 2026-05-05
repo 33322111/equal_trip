@@ -37,9 +37,9 @@ class SettlementCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if attrs["from_user"] == attrs["to_user"]:
-            raise serializers.ValidationError("from_user and to_user must be different")
+            raise serializers.ValidationError("Плательщик и получатель должны быть разными пользователями.")
         if attrs["amount"] <= 0:
-            raise serializers.ValidationError("amount must be > 0")
+            raise serializers.ValidationError("Сумма оплаты должна быть больше нуля.")
         return attrs
 
 

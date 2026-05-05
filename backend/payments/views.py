@@ -44,20 +44,20 @@ class TripSettlementViewSet(viewsets.ModelViewSet):
         from_user = serializer.validated_data["from_user"]
         to_user = serializer.validated_data["to_user"]
         if from_user != self.request.user:
-            raise PermissionDenied("You can only create a payment from your own account.")
+            raise PermissionDenied("Можно создавать оплату только от своего имени.")
 
         members = set(
             TripMember.objects.filter(trip=trip).values_list("user_id", flat=True)
         )
         if from_user.id not in members or to_user.id not in members:
-            raise serializers.ValidationError("Users must be members of the trip")
+            raise serializers.ValidationError("Оба пользователя должны состоять в поездке.")
 
         serializer.save(trip=trip)
 
     def perform_destroy(self, instance):
         trip = self.get_trip()
         if instance.from_user_id != self.request.user.id and not self._is_owner(trip):
-            raise PermissionDenied("Only payer or trip owner can delete payment.")
+            raise PermissionDenied("Удалить оплату может только плательщик или владелец поездки.")
         instance.delete()
 
     def get_serializer_class(self):
@@ -72,7 +72,7 @@ class TripSettlementViewSet(viewsets.ModelViewSet):
         settlement = self.get_object()
 
         if settlement.to_user_id != request.user.id:
-            return Response({"detail": "Only receiver can confirm payment"}, status=403)
+            return Response({"detail": "Подтвердить оплату может только получатель."}, status=403)
 
         serializer = self.get_serializer(settlement, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

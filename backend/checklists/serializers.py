@@ -55,7 +55,7 @@ class ChecklistItemCreateSerializer(serializers.ModelSerializer):
             return value
         trip = self.context["trip"]
         if not TripMember.objects.filter(trip=trip, user_id=value).exists():
-            raise serializers.ValidationError("Assignee must be a trip member.")
+            raise serializers.ValidationError("Ответственный должен быть участником поездки.")
         return value
 
 
@@ -71,7 +71,7 @@ class ChecklistItemUpdateSerializer(serializers.ModelSerializer):
             return value
         trip = self.context["trip"]
         if not TripMember.objects.filter(trip=trip, user_id=value).exists():
-            raise serializers.ValidationError("Assignee must be a trip member.")
+            raise serializers.ValidationError("Ответственный должен быть участником поездки.")
         return value
 
 

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Container, TextField, Button, Typography, Box, Alert, Paper, Stack } from '@mui/material';
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
+import { translateErrorMessage } from "../utils/errorMessages";
 
 type PasswordRule = {
   id: string;
@@ -76,9 +77,9 @@ const RegisterPage: React.FC = () => {
     } catch (err: any) {
       const data = err?.response?.data;
       const details = [
-        ...(Array.isArray(data?.password) ? data.password : []),
-        ...(Array.isArray(data?.username) ? data.username : []),
-        ...(Array.isArray(data?.email) ? data.email : []),
+        ...(Array.isArray(data?.password) ? data.password.map((item: unknown) => translateErrorMessage(item) || String(item)) : []),
+        ...(Array.isArray(data?.username) ? data.username.map((item: unknown) => translateErrorMessage(item) || String(item)) : []),
+        ...(Array.isArray(data?.email) ? data.email.map((item: unknown) => translateErrorMessage(item) || String(item)) : []),
       ];
 
       if (details.length > 0) {
@@ -87,7 +88,7 @@ const RegisterPage: React.FC = () => {
       }
 
       if (typeof data?.detail === "string") {
-        setError(data.detail);
+        setError(translateErrorMessage(data.detail) || data.detail);
         return;
       }
 

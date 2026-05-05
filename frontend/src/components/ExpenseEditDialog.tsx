@@ -6,6 +6,7 @@ import {
 } from "@mui/material";
 import { Category, Expense, updateExpense } from "../api/expenses";
 import { TripDetail } from "../api/trips";
+import { extractApiErrorMessage } from "../utils/errorMessages";
 
 type Props = {
   open: boolean;
@@ -54,13 +55,6 @@ function toLocalTimeInputValue(value: string | null | undefined, includeTime: bo
 
 function todayDateInputValue() {
   return toLocalDateInputValue(new Date().toISOString());
-}
-
-function getErrorText(value: unknown) {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-  return value;
 }
 
 function buildEvenSplit(total: number, userIds: number[]) {
@@ -246,19 +240,16 @@ export default function ExpenseEditDialog({
       await onSaved(updated);
       onClose();
     } catch (e: any) {
-      const data = e?.response?.data;
-        const message =
-          data?.detail ||
-          getErrorText(data?.non_field_errors) ||
-          getErrorText(data?.currency) ||
-          getErrorText(data?.spent_date) ||
-          getErrorText(data?.spent_time) ||
-          getErrorText(data?.spent_at) ||
-          getErrorText(data?.amount) ||
-        getErrorText(data?.share_amounts) ||
-        getErrorText(data?.share_user_ids) ||
-        "Не удалось сохранить расход.";
-      setFormError(String(message));
+      const message = extractApiErrorMessage(e, "Не удалось сохранить расход.", [
+        "currency",
+        "spent_date",
+        "spent_time",
+        "spent_at",
+        "amount",
+        "share_amounts",
+        "share_user_ids",
+      ]);
+      setFormError(message);
     } finally {
       setSaving(false);
     }

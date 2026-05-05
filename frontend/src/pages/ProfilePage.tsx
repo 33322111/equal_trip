@@ -12,6 +12,7 @@ import {
 import { getProfile, updateProfile, Profile } from "../api/profile";
 import { API_BASE_URL } from "../config/runtime";
 import { useAuth } from "../context/AuthContext";
+import { extractApiErrorMessage } from "../utils/errorMessages";
 
 export default function ProfilePage() {
   const { updateCurrentUser } = useAuth();
@@ -97,14 +98,9 @@ export default function ProfilePage() {
 
       setStatus("success");
     } catch (err: any) {
-      const data = err?.response?.data;
-      const message =
-        data?.avatar?.[0] ||
-        data?.username?.[0] ||
-        data?.email?.[0] ||
-        data?.detail ||
-        "Не удалось сохранить профиль.";
-      setError(String(message));
+      setError(
+        extractApiErrorMessage(err, "Не удалось сохранить профиль.", ["avatar", "username", "email"])
+      );
       setStatus("idle");
     }
   };

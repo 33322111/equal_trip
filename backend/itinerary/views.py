@@ -165,7 +165,7 @@ class TripDayPlanItemViewSet(viewsets.ModelViewSet):
         item = self.get_object()
         text = request.data.get("text", "").strip()
         if not text:
-            return Response({"detail": "text required"}, status=400)
+            return Response({"detail": "Текст комментария обязателен."}, status=400)
         c = DayPlanComment.objects.create(item=item, user=request.user, text=text)
         subject = f"[EqualTrip] Новый комментарий к активности в поездке «{item.day.trip.title}»"
         message = build_trip_message(
@@ -200,7 +200,7 @@ class TripDayPlanItemViewSet(viewsets.ModelViewSet):
         if request.method == "PATCH":
             text = (request.data.get("text") or "").strip()
             if not text:
-                return Response({"detail": "text required"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": "Текст комментария обязателен."}, status=status.HTTP_400_BAD_REQUEST)
             comment.text = text
             comment.save(update_fields=["text"])
             return Response(DayPlanCommentSerializer(comment).data, status=status.HTTP_200_OK)

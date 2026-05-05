@@ -15,6 +15,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { Link } from "react-router-dom";
 import { listTrips, createTrip, Trip } from "../api/trips";
+import { extractApiErrorMessage } from "../utils/errorMessages";
 
 type SortOrder = "asc" | "desc";
 type TripsSectionKey = "create" | "current" | "upcoming" | "past";
@@ -147,12 +148,7 @@ export default function TripsPage() {
       setEndDate("");
       await load();
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.detail ||
-        e?.response?.data?.start_date?.[0] ||
-        e?.response?.data?.end_date?.[0] ||
-        "Не удалось создать поездку.";
-      setError(String(msg));
+      setError(extractApiErrorMessage(e, "Не удалось создать поездку.", ["start_date", "end_date"]));
     } finally {
       setIsCreating(false);
     }

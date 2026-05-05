@@ -57,6 +57,7 @@ import ReceiptDialog from "../components/ReceiptDialog";
 
 import { searchUsers } from "../api/users";
 import { API_BASE_URL } from "../config/runtime";
+import { extractApiErrorMessage } from "../utils/errorMessages";
 
 const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
 const isPdfUrl = (url: string) => url.split("?")[0].toLowerCase().endsWith(".pdf");
@@ -331,8 +332,7 @@ export default function TripDetailPage() {
       await deleteTrip(tripId);
       navigate("/trips");
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || "Не удалось удалить поездку.";
-      setError(String(msg));
+      setError(extractApiErrorMessage(e, "Не удалось удалить поездку."));
     }
   };
 
@@ -345,8 +345,7 @@ export default function TripDetailPage() {
       await removeTripMember(tripId, memberId);
       await loadAll();
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || "Не удалось удалить участника.";
-      setError(String(msg));
+      setError(extractApiErrorMessage(e, "Не удалось удалить участника."));
     }
   };
 
@@ -411,8 +410,7 @@ export default function TripDetailPage() {
       setUserOptions([]);
       await loadAll();
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || "Не удалось добавить участника.";
-      setError(String(msg));
+      setError(extractApiErrorMessage(e, "Не удалось добавить участника."));
     } finally {
       setAddingUser(false);
     }

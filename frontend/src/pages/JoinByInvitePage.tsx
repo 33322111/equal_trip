@@ -3,6 +3,7 @@ import { Container, Typography, Box, Paper, Alert, Button, Stack } from "@mui/ma
 import { useNavigate, useParams } from "react-router-dom";
 import { acceptInvite, getInviteInfo, InviteInfo } from "../api/trips";
 import { useAuth } from "../context/AuthContext";
+import { extractApiErrorMessage } from "../utils/errorMessages";
 
 const PENDING_INVITE_TOKEN_KEY = "pendingInviteToken";
 
@@ -65,8 +66,7 @@ export default function JoinByInvitePage() {
         if (statusCode === 400 || statusCode === 404) {
           clearPendingInviteToken();
         }
-        const msg = e?.response?.data?.detail || "Не удалось загрузить приглашение.";
-        setError(String(msg));
+        setError(extractApiErrorMessage(e, "Не удалось загрузить приглашение."));
       })
       .finally(() => setLoading(false));
   }, [token, isAuthenticated, isLoading, navigate]);
@@ -84,8 +84,7 @@ export default function JoinByInvitePage() {
       if (statusCode === 400 || statusCode === 404) {
         clearPendingInviteToken();
       }
-      const msg = e?.response?.data?.detail || "Не удалось принять приглашение.";
-      setError(String(msg));
+      setError(extractApiErrorMessage(e, "Не удалось принять приглашение."));
     } finally {
       setSubmitting(false);
     }

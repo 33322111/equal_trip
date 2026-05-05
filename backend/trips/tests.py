@@ -330,7 +330,7 @@ class TripsApiTests(APITestCase):
         self.auth(self.owner)
         response = self.client.delete(f"/api/trips/{self.trip.id}/members/{self.owner_membership.id}/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["detail"], "Cannot remove yourself.")
+        self.assertEqual(response.data["detail"], "Нельзя удалить самого себя из поездки.")
 
     def test_remove_member_cannot_remove_another_owner(self):
         second_owner = TripMember.objects.create(
@@ -341,7 +341,7 @@ class TripsApiTests(APITestCase):
         self.auth(self.owner)
         response = self.client.delete(f"/api/trips/{self.trip.id}/members/{second_owner.id}/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["detail"], "Cannot remove owner.")
+        self.assertEqual(response.data["detail"], "Нельзя удалить владельца поездки.")
 
     def test_add_member_requires_user_id_and_existing_user(self):
         self.auth(self.owner)

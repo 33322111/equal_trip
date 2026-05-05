@@ -49,13 +49,13 @@ class TripViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         # удалять может только owner
         if not self._is_owner(instance):
-            raise PermissionDenied("Only owner can delete trip.")
+            raise PermissionDenied("Только владелец поездки может удалить поездку.")
         instance.delete()
 
     def perform_update(self, serializer):
         trip = serializer.instance
         if not self._is_owner(trip):
-            raise PermissionDenied("Only owner can edit trip.")
+            raise PermissionDenied("Только владелец поездки может редактировать поездку.")
         before = {
             "title": trip.title,
             "description": trip.description,
@@ -93,7 +93,7 @@ class TripViewSet(viewsets.ModelViewSet):
         trip = self.get_object()
         # только owner может создавать инвайт
         if not TripMember.objects.filter(trip=trip, user=request.user, role=TripMember.Role.OWNER).exists():
-            return Response({"detail": "Only owner can invite."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "Только владелец поездки может создавать приглашения."}, status=status.HTTP_403_FORBIDDEN)
 
         invite = TripInvite.objects.create(trip=trip, created_by=request.user)
         return Response(TripInviteSerializer(invite).data, status=status.HTTP_201_CREATED)
@@ -107,16 +107,16 @@ class TripViewSet(viewsets.ModelViewSet):
             trip=trip, user=request.user, role=TripMember.Role.OWNER
         ).exists()
         if not is_owner:
-            return Response({"detail": "Only owner can remove members."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "Только владелец поездки может удалять участников."}, status=status.HTTP_403_FORBIDDEN)
 
         member = get_object_or_404(TripMember.objects.select_related("user"), trip=trip, id=member_id)
 
         if member.user_id == request.user.id:
-            return Response({"detail": "Cannot remove yourself."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Нельзя удалить самого себя из поездки."}, status=status.HTTP_400_BAD_REQUEST)
 
         # нельзя удалять owner'а
         if member.role == TripMember.Role.OWNER:
-            return Response({"detail": "Cannot remove owner."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Нельзя удалить владельца поездки."}, status=status.HTTP_400_BAD_REQUEST)
 
         removed_user = member.user
         member.delete()
@@ -160,7 +160,7 @@ class TripViewSet(viewsets.ModelViewSet):
 
         if membership.role == TripMember.Role.OWNER:
             return Response(
-                {"detail": "Owner cannot leave the trip. Transfer ownership or delete the trip."},
+                {"detail": "Владелец не может покинуть поездку. Сначала передайте права другому участнику или удалите поездку."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -177,7 +177,7 @@ class TripViewSet(viewsets.ModelViewSet):
         )
         recipients = trip_member_emails(trip)
         safe_send_notification(subject, message, recipients, "Failed to send leave trip notification email")
-        return Response({"detail": "Left the trip."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Вы покинули поездку."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path=r"members/add")
     def add_member(self, request, pk=None):
@@ -187,16 +187,16 @@ class TripViewSet(viewsets.ModelViewSet):
             trip=trip, user=request.user, role=TripMember.Role.OWNER
         ).exists()
         if not is_owner:
-            return Response({"detail": "Only owner can add members."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "Только владелец поездки может добавлять участников."}, status=status.HTTP_403_FORBIDDEN)
 
         user_id = request.data.get("user_id")
         if not user_id:
-            return Response({"detail": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Не указан пользователь для добавления."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             target_user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Пользователь не найден."}, status=status.HTTP_404_NOT_FOUND)
 
         membership, created = TripMember.objects.get_or_create(
             trip=trip,
@@ -205,7 +205,7 @@ class TripViewSet(viewsets.ModelViewSet):
         )
 
         if not created:
-            return Response({"detail": "User is already a member."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Пользователь уже состоит в этой поездке."}, status=status.HTTP_400_BAD_REQUEST)
 
         subject = f"[EqualTrip] Вас добавили в поездку «{trip.title}»"
         direct_message = build_trip_message(
@@ -236,7 +236,7 @@ class TripViewSet(viewsets.ModelViewSet):
             recipients,
             "Failed to send member joined notification email",
         )
-        return Response({"detail": "Member added."}, status=status.HTTP_201_CREATED)
+        return Response({"detail": "Участник добавлен."}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"])
     def balance(self, request, pk=None):
@@ -258,13 +258,13 @@ class InviteAcceptViewSet(viewsets.ViewSet):
         try:
             invite = TripInvite.objects.select_related("trip", "trip__owner").get(token=token)
         except TripInvite.DoesNotExist:
-            return None, Response({"detail": "Invite not found."}, status=status.HTTP_404_NOT_FOUND)
+            return None, Response({"detail": "Приглашение не найдено."}, status=status.HTTP_404_NOT_FOUND)
 
         if invite.is_used:
-            return None, Response({"detail": "Invite already used."}, status=status.HTTP_400_BAD_REQUEST)
+            return None, Response({"detail": "Это приглашение уже использовано."}, status=status.HTTP_400_BAD_REQUEST)
 
         if invite.expires_at and timezone.now() > invite.expires_at:
-            return None, Response({"detail": "Invite expired."}, status=status.HTTP_400_BAD_REQUEST)
+            return None, Response({"detail": "Срок действия приглашения истёк."}, status=status.HTTP_400_BAD_REQUEST)
 
         return invite, None
 

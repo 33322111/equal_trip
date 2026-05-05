@@ -51,6 +51,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Пользователь с таким email уже существует.")
         return normalized
 
+    def validate_username(self, value):
+        queryset = User.objects.filter(username__iexact=value)
+        if queryset.exists():
+            raise serializers.ValidationError("Пользователь с таким именем уже существует.")
+        return value
+
     def create(self, validated_data):
         user = User(
             username=validated_data['username'],

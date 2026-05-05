@@ -147,7 +147,7 @@ def _prepare_share_weights(
         if len(user_ids) != len(set(user_ids)):
             raise serializers.ValidationError({"share_amounts": "Пользователи в списке долей должны быть уникальны."})
         if not set(user_ids).issubset(member_ids):
-            raise serializers.ValidationError({"share_amounts": "Some users are not members of the trip."})
+            raise serializers.ValidationError({"share_amounts": "Некоторые пользователи из списка долей не состоят в поездке."})
 
         total_share_amount = quant2(
             sum((Decimal(str(item["amount"])) for item in share_amounts), Decimal("0"))
@@ -174,7 +174,7 @@ def _prepare_share_weights(
     if len(share_user_ids) != len(set(share_user_ids)):
         raise serializers.ValidationError({"share_user_ids": "Пользователи в списке должны быть уникальны."})
     if not set(share_user_ids).issubset(member_ids):
-        raise serializers.ValidationError({"share_user_ids": "Some users are not members of the trip."})
+        raise serializers.ValidationError({"share_user_ids": "Некоторые выбранные пользователи не состоят в поездке."})
 
     return [(uid, Decimal("1")) for uid in share_user_ids]
 

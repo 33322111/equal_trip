@@ -61,7 +61,7 @@ class DayPlanItemCreateSerializer(serializers.ModelSerializer):
             return value
         trip = self.context["trip"]
         if not TripMember.objects.filter(trip=trip, user_id=value).exists():
-            raise serializers.ValidationError("Assignee must be trip member.")
+            raise serializers.ValidationError("Ответственный должен быть участником поездки.")
         return value
 
     def validate(self, attrs):
@@ -93,7 +93,7 @@ class DayPlanItemUpdateSerializer(serializers.ModelSerializer):
             return value
         trip = self.context["trip"]
         if not TripMember.objects.filter(trip=trip, user_id=value).exists():
-            raise serializers.ValidationError("Assignee must be trip member.")
+            raise serializers.ValidationError("Ответственный должен быть участником поездки.")
         return value
 
     def validate(self, attrs):

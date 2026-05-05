@@ -25,6 +25,7 @@ import {
 } from "../../../api/settlements";
 import { downloadReceipt } from "../../../api/exports";
 import { API_BASE_URL } from "../../../config/runtime";
+import { extractApiErrorMessage } from "../../../utils/errorMessages";
 
 type MemberUser = { id: number; username: string; email: string };
 type TripMember = { id: number; role: string; user: MemberUser };
@@ -109,9 +110,7 @@ export default function BalanceSettlementsSection({
       closePayDialog();
       await onAfterChange();
     } catch (e: any) {
-      const data = e?.response?.data;
-      const message = data?.proof?.[0] || data?.detail || "Не удалось создать оплату.";
-      onError(String(message));
+      onError(extractApiErrorMessage(e, "Не удалось создать оплату.", ["proof"]));
     } finally {
       setPaySubmitting(false);
     }
@@ -141,9 +140,7 @@ export default function BalanceSettlementsSection({
       closeConfirmDialog();
       await onAfterChange();
     } catch (e: any) {
-      const data = e?.response?.data;
-      const message = data?.proof?.[0] || data?.detail || "Не удалось подтвердить оплату.";
-      onError(String(message));
+      onError(extractApiErrorMessage(e, "Не удалось подтвердить оплату.", ["proof"]));
     } finally {
       setConfirmSubmitting(false);
     }

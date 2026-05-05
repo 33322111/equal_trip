@@ -48,6 +48,7 @@ import { TripDetail } from "../../../api/trips";
 import ReceiptDialog from "../../../components/ReceiptDialog";
 import { API_BASE_URL } from "../../../config/runtime";
 import ExpenseDetailsPanel from "../../../components/ExpenseDetailsPanel";
+import { extractApiErrorMessage } from "../../../utils/errorMessages";
 
 const DEFAULT_MAP_CENTER: [number, number] = [55.751244, 37.618423];
 const ExpenseLocationMapPicker = lazy(() => import("../../../components/ExpenseLocationMapPicker"));
@@ -137,31 +138,20 @@ function todayDateInputValue() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-function getErrorText(value: unknown) {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-  return value;
-}
-
 function extractErrorMessage(error: any, fallback: string) {
-  const data = error?.response?.data;
-  return (
-    getErrorText(data?.receipt) ||
-    data?.detail ||
-    getErrorText(data?.non_field_errors) ||
-    getErrorText(data?.amount) ||
-    getErrorText(data?.currency) ||
-    getErrorText(data?.spent_date) ||
-    getErrorText(data?.spent_time) ||
-    getErrorText(data?.spent_at) ||
-    getErrorText(data?.category_id) ||
-    getErrorText(data?.share_amounts) ||
-    getErrorText(data?.share_user_ids) ||
-    getErrorText(data?.lat) ||
-    getErrorText(data?.lng) ||
-    fallback
-  );
+  return extractApiErrorMessage(error, fallback, [
+    "receipt",
+    "amount",
+    "currency",
+    "spent_date",
+    "spent_time",
+    "spent_at",
+    "category_id",
+    "share_amounts",
+    "share_user_ids",
+    "lat",
+    "lng",
+  ]);
 }
 
 function buildEvenSplit(total: number, userIds: number[]) {
