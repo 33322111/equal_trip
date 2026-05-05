@@ -70,6 +70,24 @@ class NotificationSignalsTests(TestCase):
         self.assertIn(self.member.email, recipients)
 
     @patch("notifications.signals_expenses.safe_send_notification")
+    def test_expense_receipt_only_update_does_not_send_notification(self, mocked_send):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Receipt only",
+            amount=Decimal("55.00"),
+            currency="RUB",
+            amount_rub=Decimal("55.00"),
+            fx_rate=Decimal("1.000000"),
+        )
+        mocked_send.reset_mock()
+
+        expense.receipt = "receipts/receipt-only.pdf"
+        expense.save(update_fields=["receipt"])
+
+        self.assertEqual(mocked_send.call_count, 0)
+
+    @patch("notifications.signals_expenses.safe_send_notification")
     def test_expense_delete_sends_notification(self, mocked_send):
         expense = Expense.objects.create(
             trip=self.trip,

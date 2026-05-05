@@ -341,7 +341,6 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
 
   const reportSectionError = (message: string) => {
     setSectionError(message);
-    onError(message);
   };
 
   const replaceExpenses = (nextExpenses: Expense[]) => {
@@ -658,12 +657,6 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
           Расходы
         </Typography>
 
-        {sectionError ? (
-          <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
-            {sectionError}
-          </Alert>
-        ) : null}
-
         {/* Форма добавления */}
         <Box component="form" onSubmit={onAddExpense} sx={{ mb: 2 }}>
           <Box
@@ -968,6 +961,12 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
               Добавить
             </Button>
           </Box>
+
+          {sectionError ? (
+            <Alert severity="error" sx={{ mt: 2, borderRadius: 3 }}>
+              {sectionError}
+            </Alert>
+          ) : null}
         </Box>
 
         <Divider sx={{ mb: 2 }} />

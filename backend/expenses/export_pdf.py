@@ -2,6 +2,7 @@ import os
 from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 from django.conf import settings
 from django.http import FileResponse
@@ -43,7 +44,7 @@ def _fmt_dt(value, include_time: bool = True, date_only_value=None) -> str:
 
 
 def _fmt_money(value) -> str:
-    return str(_q2(_to_decimal(value)))
+    return f"{_q2(_to_decimal(value)):,.2f}".replace(",", " ")
 
 
 def _short(value, limit: int) -> str:
@@ -101,21 +102,68 @@ def _build_styles():
             fontSize=9,
             textColor=colors.HexColor("#475569"),
         ),
+        "table_header": ParagraphStyle(
+            "table_header",
+            parent=base["BodyText"],
+            fontName="DejaVuSans-Bold",
+            fontSize=8.5,
+            leading=10.5,
+            textColor=colors.HexColor("#0f172a"),
+            wordWrap="CJK",
+            splitLongWords=1,
+        ),
+        "table_cell": ParagraphStyle(
+            "table_cell",
+            parent=base["BodyText"],
+            fontName="DejaVuSans",
+            fontSize=8,
+            leading=9.5,
+            wordWrap="CJK",
+            splitLongWords=1,
+        ),
     }
 
 
-def _build_table(data, col_widths):
-    table = Table(data, colWidths=col_widths, repeatRows=1)
+def _fmt_dt_lines(value, include_time: bool = True, date_only_value=None):
+    if not include_time and date_only_value is not None:
+        return [date_only_value.strftime("%Y-%m-%d")]
+    if not value:
+        return ["—"]
+    localized = localtime(value)
+    if include_time:
+        return [localized.strftime("%Y-%m-%d"), localized.strftime("%H:%M")]
+    return [localized.strftime("%Y-%m-%d")]
+
+
+def _table_paragraph(value, style):
+    if isinstance(value, Paragraph):
+        return value
+
+    if isinstance(value, (list, tuple)):
+        parts = [escape(str(item)) for item in value if item not in (None, "")]
+        text = "<br/>".join(parts) if parts else "—"
+    else:
+        text = escape(str(value or "—")).replace("\n", "<br/>")
+
+    return Paragraph(text, style)
+
+
+def _build_table(data, col_widths, styles):
+    header_style = styles["table_header"]
+    cell_style = styles["table_cell"]
+    normalized = []
+    for row_index, row in enumerate(data):
+        style = header_style if row_index == 0 else cell_style
+        normalized.append([_table_paragraph(cell, style) for cell in row])
+
+    table = Table(normalized, colWidths=col_widths, repeatRows=1)
     table.setStyle(
         TableStyle(
             [
-                ("FONTNAME", (0, 0), (-1, 0), "DejaVuSans-Bold"),
-                ("FONTNAME", (0, 1), (-1, -1), "DejaVuSans"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 4),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 4),
                 ("TOPPADDING", (0, 0), (-1, -1), 3),
@@ -270,7 +318,7 @@ def export_trip_pdf(trip: Trip):
         ["Период поездки", trip_period],
         ["Создана", _fmt_dt(trip.created_at)],
     ]
-    story.append(_build_table(info_data, [48 * mm, doc.width - 48 * mm]))
+    story.append(_build_table(info_data, [48 * mm, doc.width - 48 * mm], styles))
     story.append(Spacer(1, 3 * mm))
 
     summary_data = [
@@ -282,7 +330,7 @@ def export_trip_pdf(trip: Trip):
             f"{_fmt_money(total_rub)} RUB",
         ],
     ]
-    story.append(_build_table(summary_data, [doc.width / 4] * 4))
+    story.append(_build_table(summary_data, [doc.width / 4] * 4, styles))
 
     story.append(Paragraph("Графики", styles["h2"]))
     category_chart = _build_horizontal_bar_chart(
@@ -329,15 +377,15 @@ def export_trip_pdf(trip: Trip):
                 [
                     str(e.id),
                     _short(e.title, 26),
-                    _short(e.category.name if e.category else "Без категории", 16),
-                    f"{_fmt_money(e.amount)} {e.currency}",
+                    e.category.name if e.category else "Без категории",
+                    [_fmt_money(e.amount), e.currency],
                     _fmt_money(e.amount_rub),
                     _short(e.created_by.username, 14),
-                    _fmt_dt(
+                    _fmt_dt_lines(
                         e.spent_at,
                         include_time=e.spent_time_known,
                         date_only_value=e.spent_date_local,
-                    ) if e.spent_at or e.spent_date_local else _fmt_dt(e.created_at),
+                    ) if e.spent_at or e.spent_date_local else _fmt_dt_lines(e.created_at),
                     "Да" if e.receipt else "Нет",
                     "Да" if e.lat is not None and e.lng is not None else "Нет",
                 ]
@@ -345,7 +393,8 @@ def export_trip_pdf(trip: Trip):
         story.append(
             _build_table(
                 expense_table_data,
-                [10 * mm, 34 * mm, 22 * mm, 18 * mm, 18 * mm, 24 * mm, 24 * mm, 11 * mm, 11 * mm],
+                [9 * mm, 29 * mm, 28 * mm, 20 * mm, 22 * mm, 20 * mm, 25 * mm, 10 * mm, 11 * mm],
+                styles,
             )
         )
     else:
@@ -370,6 +419,7 @@ def export_trip_pdf(trip: Trip):
             _build_table(
                 share_table_data,
                 [42 * mm, 36 * mm, 16 * mm, 24 * mm, 24 * mm, 20 * mm],
+                styles,
             )
         )
     else:
@@ -390,7 +440,7 @@ def export_trip_pdf(trip: Trip):
                     f"{_fmt_money(net_map.get(uid, Decimal('0')))} RUB",
                 ]
             )
-        story.append(_build_table(net_data, [62 * mm, 35 * mm, 35 * mm, 35 * mm]))
+        story.append(_build_table(net_data, [62 * mm, 35 * mm, 35 * mm, 35 * mm], styles))
     else:
         story.append(Paragraph("Нет данных для баланса.", styles["body"]))
 
@@ -409,7 +459,7 @@ def export_trip_pdf(trip: Trip):
                     f"{_fmt_money(t['amount'])} RUB",
                 ]
             )
-        story.append(_build_table(transfer_data, [67 * mm, 67 * mm, 36 * mm]))
+        story.append(_build_table(transfer_data, [67 * mm, 67 * mm, 36 * mm], styles))
     else:
         story.append(Paragraph("Баланс нулевой: никто никому не должен.", styles["body"]))
 
