@@ -44,21 +44,12 @@ class SettlementCreateSerializer(serializers.ModelSerializer):
 
 
 class SettlementConfirmSerializer(serializers.ModelSerializer):
-    proof = RussianFileField(required=False, allow_null=True)
-
     class Meta:
         model = Settlement
-        fields = ("proof",)
-
-    def validate_proof(self, value):
-        if value is None:
-            return value
-        return validate_document_upload(value, label="Подтверждение оплаты")
+        fields = ()
 
     def update(self, instance, validated_data):
         instance.status = Settlement.Status.CONFIRMED
         instance.confirmed_at = timezone.now()
-        if "proof" in validated_data:
-            instance.proof = validated_data["proof"]
         instance.save()
         return instance

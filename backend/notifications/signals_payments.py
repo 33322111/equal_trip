@@ -19,7 +19,7 @@ def settlement_created_or_confirmed(sender, instance: Settlement, created, **kwa
                 f"Получатель: {instance.to_user.username}",
                 f"Сумма: {instance.amount} {instance.currency}",
                 f"Статус: ожидает подтверждения",
-                f"Подтверждение оплаты: {'прикреплено' if bool(instance.proof) else 'не прикреплено'}",
+                f"Скриншот перевода: {'прикреплён' if bool(instance.proof) else 'не прикреплён'}",
                 f"Создано: {format_datetime_value(instance.created_at)}",
             ],
         )

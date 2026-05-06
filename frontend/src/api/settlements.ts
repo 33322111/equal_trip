@@ -23,8 +23,8 @@ export async function createSettlement(tripId: number, data: FormData): Promise<
   return res.data;
 }
 
-export async function confirmSettlement(tripId: number, settlementId: number, data?: FormData): Promise<Settlement> {
-  const res = await api.post(`/trips/${tripId}/settlements/${settlementId}/confirm/`, data ?? undefined);
+export async function confirmSettlement(tripId: number, settlementId: number): Promise<Settlement> {
+  const res = await api.post(`/trips/${tripId}/settlements/${settlementId}/confirm/`);
   return res.data;
 }
 

@@ -70,7 +70,6 @@ export default function BalanceSettlementsSection({
   // Confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmSettlementId, setConfirmSettlementId] = useState<number | null>(null);
-  const [confirmProofFile, setConfirmProofFile] = useState<File | null>(null);
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
   const openPayDialogFromTransfer = (fromUser: number, toUser: number, amount: string) => {
@@ -118,14 +117,12 @@ export default function BalanceSettlementsSection({
 
   const openConfirmDialog = (settlementId: number) => {
     setConfirmSettlementId(settlementId);
-    setConfirmProofFile(null);
     setConfirmOpen(true);
   };
 
   const closeConfirmDialog = () => {
     setConfirmOpen(false);
     setConfirmSettlementId(null);
-    setConfirmProofFile(null);
   };
 
   const submitConfirm = async () => {
@@ -133,14 +130,11 @@ export default function BalanceSettlementsSection({
 
     setConfirmSubmitting(true);
     try {
-      const fd = new FormData();
-      if (confirmProofFile) fd.append("proof", confirmProofFile);
-
-      await confirmSettlement(tripId, confirmSettlementId, fd);
+      await confirmSettlement(tripId, confirmSettlementId);
       closeConfirmDialog();
       await onAfterChange();
     } catch (e: any) {
-      onError(extractApiErrorMessage(e, "Не удалось подтвердить оплату.", ["proof"]));
+      onError(extractApiErrorMessage(e, "Не удалось подтвердить оплату."));
     } finally {
       setConfirmSubmitting(false);
     }
@@ -249,7 +243,7 @@ export default function BalanceSettlementsSection({
                       </Typography>
 
                       <Typography variant="body2" color="text.secondary">
-                        Скриншот: {s.proof ? "есть" : "нет"}
+                        Скриншот перевода: {s.proof ? "есть" : "нет"}
                       </Typography>
                     </Box>
 
@@ -318,7 +312,7 @@ export default function BalanceSettlementsSection({
         <DialogTitle>Отметить оплату</DialogTitle>
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Можно прикрепить скрин перевода (опционально).
+            Можно прикрепить скриншот перевода (опционально).
           </Alert>
 
           <TextField
@@ -330,7 +324,7 @@ export default function BalanceSettlementsSection({
           />
 
           <Button variant="outlined" component="label" startIcon={<AttachFileIcon />} sx={{ mt: 1 }}>
-            Прикрепить скриншот
+            Прикрепить скриншот перевода
             <input
               hidden
               type="file"
@@ -359,24 +353,8 @@ export default function BalanceSettlementsSection({
         <DialogTitle>Подтвердить оплату</DialogTitle>
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Можно прикрепить скрин (опционально). После подтверждения баланс пересчитается.
+            После подтверждения оплаты баланс пересчитается.
           </Alert>
-
-          <Button variant="outlined" component="label" startIcon={<AttachFileIcon />}>
-            Прикрепить скриншот
-            <input
-              hidden
-              type="file"
-              accept="application/pdf,image/jpeg,image/png,image/gif,image/webp"
-              onChange={(e) => setConfirmProofFile(e.target.files?.[0] ?? null)}
-            />
-          </Button>
-
-          {confirmProofFile ? (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              Файл: {confirmProofFile.name}
-            </Typography>
-          ) : null}
         </DialogContent>
 
         <DialogActions>

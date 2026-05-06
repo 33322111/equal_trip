@@ -129,47 +129,27 @@ class PaymentsApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_confirm_settlement_with_proof_file(self):
-        settlement = self.create_settlement()
+    def test_confirm_settlement_does_not_replace_sender_proof(self):
+        settlement = Settlement.objects.create(
+            trip=self.trip,
+            from_user=self.member,
+            to_user=self.owner,
+            amount=Decimal("100.00"),
+            currency="RUB",
+            status=Settlement.Status.PENDING,
+            proof="settlement_proofs/original-proof.pdf",
+        )
         self.auth(self.owner)
-        proof = SimpleUploadedFile("proof.pdf", VALID_PDF_BYTES, content_type="application/pdf")
         response = self.client.post(
             f"/api/trips/{self.trip.id}/settlements/{settlement.id}/confirm/",
-            {"proof": proof},
-            format="multipart",
+            {},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         settlement.refresh_from_db()
         self.assertEqual(settlement.status, Settlement.Status.CONFIRMED)
-        self.assertTrue(bool(settlement.proof))
-
-    def test_confirm_settlement_rejects_invalid_proof_type(self):
-        settlement = self.create_settlement()
-        self.auth(self.owner)
-        proof = SimpleUploadedFile("proof.exe", b"payload", content_type="application/octet-stream")
-        response = self.client.post(
-            f"/api/trips/{self.trip.id}/settlements/{settlement.id}/confirm/",
-            {"proof": proof},
-            format="multipart",
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("proof", response.data)
-
-    @override_settings(DOCUMENT_UPLOAD_MAX_BYTES=10)
-    def test_confirm_settlement_rejects_oversize_proof(self):
-        settlement = self.create_settlement()
-        self.auth(self.owner)
-        proof = SimpleUploadedFile("proof.pdf", VALID_PDF_BYTES, content_type="application/pdf")
-        response = self.client.post(
-            f"/api/trips/{self.trip.id}/settlements/{settlement.id}/confirm/",
-            {"proof": proof},
-            format="multipart",
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("proof", response.data)
+        self.assertEqual(settlement.proof, "settlement_proofs/original-proof.pdf")
 
     def test_delete_settlement(self):
         settlement = self.create_settlement()
