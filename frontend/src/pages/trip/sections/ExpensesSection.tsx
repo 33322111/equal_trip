@@ -21,6 +21,11 @@ import {
   Alert,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { TimeField } from "@mui/x-date-pickers/TimeField";
+import ruLocale from "date-fns/locale/ru";
 
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -138,6 +143,36 @@ function todayDateInputValue() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+function toLocalDateFieldValue(value: string | null | undefined) {
+  if (!value) return null;
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day);
+}
+
+function fromLocalDateFieldValue(value: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
+
+function toLocalTimeFieldValue(value: string | null | undefined) {
+  if (!value) return null;
+  const [hRaw, mRaw] = value.split(":");
+  const h = Number(hRaw);
+  const m = Number(mRaw);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const date = new Date();
+  date.setHours(h, m, 0, 0);
+  return date;
+}
+
+function fromLocalTimeFieldValue(value: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return "";
+  return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
+}
+
 function extractErrorMessage(error: any, fallback: string) {
   return extractApiErrorMessage(error, fallback, [
     "receipt",
@@ -205,7 +240,7 @@ function mergeExpense(prevExpense: Expense, nextExpense: Expense) {
 }
 
 export default function ExpensesSection({ tripId, trip, onAfterChange, onExpensesChange, onError }: Props) {
-  const maxSpentDate = useMemo(() => todayDateInputValue(), []);
+  const maxSpentDate = useMemo(() => toLocalDateFieldValue(todayDateInputValue()), []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -641,6 +676,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
   }, [sortedExpenses, expensePage, expenseRowsPerPage]);
 
   return (
+    <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
     <>
       <Paper sx={{ p: 2, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
@@ -689,28 +725,31 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
               sx={{ minWidth: 0 }}
               alignItems="flex-start"
             >
-              <TextField
+              <DatePicker
                 label="Дата расхода"
-                type="date"
-                value={formSpentDate}
-                onChange={(e) => {
-                  const nextDate = e.target.value;
+                value={toLocalDateFieldValue(formSpentDate)}
+                onChange={(value) => {
+                  const nextDate = fromLocalDateFieldValue(value);
                   setFormSpentDate(nextDate);
                   if (!nextDate) {
                     setFormSpentTime("");
                   }
                 }}
-                inputProps={{ max: maxSpentDate }}
-                InputLabelProps={{ shrink: true }}
-                sx={{ flex: 1, minWidth: 0, width: "100%" }}
+                format="dd.MM.yyyy"
+                maxDate={maxSpentDate ?? undefined}
+                slotProps={{
+                  textField: {
+                    sx: { flex: 1, minWidth: 0, width: "100%" },
+                  },
+                }}
               />
-              <TextField
+              <TimeField
                 label="Время расхода"
-                type="time"
-                value={formSpentTime}
-                onChange={(e) => setFormSpentTime(e.target.value)}
+                value={toLocalTimeFieldValue(formSpentTime)}
+                onChange={(value) => setFormSpentTime(fromLocalTimeFieldValue(value))}
                 disabled={!formSpentDate}
-                InputLabelProps={{ shrink: true }}
+                format="HH:mm"
+                ampm={false}
                 sx={{ flex: 1, minWidth: 0, width: "100%" }}
               />
             </Stack>
@@ -1164,5 +1203,6 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
         </DialogActions>
       </Dialog>
     </>
+    </LocalizationProvider>
   );
 }

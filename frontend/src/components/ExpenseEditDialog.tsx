@@ -4,6 +4,11 @@ import {
   Button, TextField, MenuItem, FormControlLabel, Checkbox,
   Typography, Box, Stack, InputAdornment, Alert
 } from "@mui/material";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { TimeField } from "@mui/x-date-pickers/TimeField";
+import ruLocale from "date-fns/locale/ru";
 import { Category, Expense, updateExpense } from "../api/expenses";
 import { TripDetail } from "../api/trips";
 import { extractApiErrorMessage } from "../utils/errorMessages";
@@ -57,6 +62,36 @@ function todayDateInputValue() {
   return toLocalDateInputValue(new Date().toISOString());
 }
 
+function toLocalDateFieldValue(value: string | null | undefined) {
+  if (!value) return null;
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day);
+}
+
+function fromLocalDateFieldValue(value: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
+
+function toLocalTimeFieldValue(value: string | null | undefined) {
+  if (!value) return null;
+  const [hRaw, mRaw] = value.split(":");
+  const h = Number(hRaw);
+  const m = Number(mRaw);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const date = new Date();
+  date.setHours(h, m, 0, 0);
+  return date;
+}
+
+function fromLocalTimeFieldValue(value: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return "";
+  return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
+}
+
 function buildEvenSplit(total: number, userIds: number[]) {
   const result: Record<number, string> = {};
   if (!Number.isFinite(total) || total <= 0 || userIds.length === 0) {
@@ -82,7 +117,7 @@ function buildEvenSplit(total: number, userIds: number[]) {
 export default function ExpenseEditDialog({
   open, onClose, tripId, trip, categories, expense, onSaved
 }: Props) {
-  const maxSpentDate = useMemo(() => todayDateInputValue(), []);
+  const maxSpentDate = useMemo(() => toLocalDateFieldValue(todayDateInputValue()), []);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("RUB");
@@ -256,6 +291,7 @@ export default function ExpenseEditDialog({
   };
 
   return (
+    <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>Редактировать расход</DialogTitle>
       <DialogContent sx={{ pt: 2 }}>
@@ -286,28 +322,31 @@ export default function ExpenseEditDialog({
           onChange={(e) => setCurrency(e.target.value)}
         />
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 2 }}>
-          <TextField
+          <DatePicker
             label="Дата расхода"
-            type="date"
-            value={spentDate}
-          onChange={(e) => {
-            const nextDate = e.target.value;
-            setSpentDate(nextDate);
-            if (!nextDate) {
-              setSpentTime("");
-            }
-          }}
-          inputProps={{ max: maxSpentDate }}
-          InputLabelProps={{ shrink: true }}
-          sx={{ flex: 1, minWidth: 0, width: "100%" }}
-        />
-          <TextField
+            value={toLocalDateFieldValue(spentDate)}
+            onChange={(value) => {
+              const nextDate = fromLocalDateFieldValue(value);
+              setSpentDate(nextDate);
+              if (!nextDate) {
+                setSpentTime("");
+              }
+            }}
+            format="dd.MM.yyyy"
+            maxDate={maxSpentDate ?? undefined}
+            slotProps={{
+              textField: {
+                sx: { flex: 1, minWidth: 0, width: "100%" },
+              },
+            }}
+          />
+          <TimeField
             label="Время расхода"
-            type="time"
-            value={spentTime}
-            onChange={(e) => setSpentTime(e.target.value)}
+            value={toLocalTimeFieldValue(spentTime)}
+            onChange={(value) => setSpentTime(fromLocalTimeFieldValue(value))}
             disabled={!spentDate}
-            InputLabelProps={{ shrink: true }}
+            format="HH:mm"
+            ampm={false}
             sx={{ flex: 1, minWidth: 0, width: "100%" }}
           />
         </Stack>
@@ -413,5 +452,6 @@ export default function ExpenseEditDialog({
         </Button>
       </DialogActions>
     </Dialog>
+    </LocalizationProvider>
   );
 }

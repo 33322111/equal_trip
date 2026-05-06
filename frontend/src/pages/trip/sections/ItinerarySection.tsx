@@ -23,6 +23,7 @@ import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { TimeField } from "@mui/x-date-pickers/TimeField";
 import ruLocale from "date-fns/locale/ru";
 import { PickersDay } from "@mui/x-date-pickers/PickersDay";
 import type { PickersDayProps } from "@mui/x-date-pickers/PickersDay";
@@ -71,6 +72,22 @@ function toHm(value: string | null | undefined) {
   const [hRaw, mRaw] = value.split(":");
   if (hRaw === undefined || mRaw === undefined) return value;
   return `${hRaw}:${mRaw}`;
+}
+
+function toLocalTimeFieldValue(value: string | null | undefined) {
+  if (!value) return null;
+  const [hRaw, mRaw] = value.split(":");
+  const h = Number(hRaw);
+  const m = Number(mRaw);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const date = new Date();
+  date.setHours(h, m, 0, 0);
+  return date;
+}
+
+function fromLocalTimeFieldValue(value: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return "";
+  return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
 }
 
 export default function ItinerarySection({ tripId, members, onError }: Props) {
@@ -490,22 +507,21 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
                         />
 
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ width: { xs: "100%", md: "auto" } }}>
-                          <TextField
+                          <TimeField
                             label="С"
-                            type="time"
-                            value={itFrom}
-                            onChange={(e) => setItFrom(e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                            inputProps={{ step: 60 }}
+                            value={toLocalTimeFieldValue(itFrom)}
+                            onChange={(value) => setItFrom(fromLocalTimeFieldValue(value))}
+                            format="HH:mm"
+                            ampm={false}
                             sx={{ width: { xs: "100%", sm: 140 } }}
                           />
-                          <TextField
+                          <TimeField
                             label="До"
-                            type="time"
-                            value={itTo}
-                            onChange={(e) => setItTo(e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                            inputProps={{ step: 60, min: itFrom || undefined }}
+                            value={toLocalTimeFieldValue(itTo)}
+                            onChange={(value) => setItTo(fromLocalTimeFieldValue(value))}
+                            format="HH:mm"
+                            ampm={false}
+                            minTime={toLocalTimeFieldValue(itFrom) ?? undefined}
                             error={createTimeInvalid}
                             sx={{ width: { xs: "100%", sm: 140 } }}
                           />
@@ -636,22 +652,21 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
               required
             />
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
+              <TimeField
                 label="С"
-                type="time"
-                value={editActivityFrom}
-                onChange={(e) => setEditActivityFrom(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 60 }}
+                value={toLocalTimeFieldValue(editActivityFrom)}
+                onChange={(value) => setEditActivityFrom(fromLocalTimeFieldValue(value))}
+                format="HH:mm"
+                ampm={false}
                 fullWidth
               />
-              <TextField
+              <TimeField
                 label="До"
-                type="time"
-                value={editActivityTo}
-                onChange={(e) => setEditActivityTo(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 60, min: editActivityFrom || undefined }}
+                value={toLocalTimeFieldValue(editActivityTo)}
+                onChange={(value) => setEditActivityTo(fromLocalTimeFieldValue(value))}
+                format="HH:mm"
+                ampm={false}
+                minTime={toLocalTimeFieldValue(editActivityFrom) ?? undefined}
                 error={editTimeInvalid}
                 fullWidth
               />
