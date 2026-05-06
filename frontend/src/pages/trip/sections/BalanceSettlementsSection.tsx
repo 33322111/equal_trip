@@ -38,7 +38,6 @@ type Props = {
   balance: BalanceResponse | null;
   settlements: Settlement[];
   onAfterChange: () => Promise<void>;
-  onError: (msg: string) => void;
 };
 
 export default function BalanceSettlementsSection({
@@ -49,7 +48,6 @@ export default function BalanceSettlementsSection({
   balance,
   settlements,
   onAfterChange,
-  onError,
 }: Props) {
   const toAbsUrl = (url: string) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
 
@@ -66,6 +64,9 @@ export default function BalanceSettlementsSection({
   const [payAmount, setPayAmount] = useState<string>("");
   const [payProofFile, setPayProofFile] = useState<File | null>(null);
   const [paySubmitting, setPaySubmitting] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   // Confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -73,6 +74,7 @@ export default function BalanceSettlementsSection({
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
   const openPayDialogFromTransfer = (fromUser: number, toUser: number, amount: string) => {
+    setPayError(null);
     setPayFromUserId(fromUser);
     setPayToUserId(toUser);
     setPayAmount(String(amount));
@@ -86,18 +88,20 @@ export default function BalanceSettlementsSection({
     setPayToUserId(null);
     setPayAmount("");
     setPayProofFile(null);
+    setPayError(null);
   };
 
   const submitPay = async () => {
     if (!payFromUserId || !payToUserId) return;
     const amt = Number(payAmount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      onError("Введите корректную сумму оплаты > 0.");
+      setPayError("Введите корректную сумму оплаты > 0.");
       return;
     }
 
     setPaySubmitting(true);
     try {
+      setPayError(null);
       const fd = new FormData();
       fd.append("from_user", String(payFromUserId));
       fd.append("to_user", String(payToUserId));
@@ -109,13 +113,14 @@ export default function BalanceSettlementsSection({
       closePayDialog();
       await onAfterChange();
     } catch (e: any) {
-      onError(extractApiErrorMessage(e, "Не удалось создать оплату.", ["proof"]));
+      setPayError(extractApiErrorMessage(e, "Не удалось создать оплату.", ["proof"]));
     } finally {
       setPaySubmitting(false);
     }
   };
 
   const openConfirmDialog = (settlementId: number) => {
+    setConfirmError(null);
     setConfirmSettlementId(settlementId);
     setConfirmOpen(true);
   };
@@ -123,6 +128,7 @@ export default function BalanceSettlementsSection({
   const closeConfirmDialog = () => {
     setConfirmOpen(false);
     setConfirmSettlementId(null);
+    setConfirmError(null);
   };
 
   const submitConfirm = async () => {
@@ -130,11 +136,12 @@ export default function BalanceSettlementsSection({
 
     setConfirmSubmitting(true);
     try {
+      setConfirmError(null);
       await confirmSettlement(tripId, confirmSettlementId);
       closeConfirmDialog();
       await onAfterChange();
     } catch (e: any) {
-      onError(extractApiErrorMessage(e, "Не удалось подтвердить оплату."));
+      setConfirmError(extractApiErrorMessage(e, "Не удалось подтвердить оплату."));
     } finally {
       setConfirmSubmitting(false);
     }
@@ -145,10 +152,11 @@ export default function BalanceSettlementsSection({
     if (!ok) return;
 
     try {
+      setSectionError(null);
       await deleteSettlement(tripId, settlementId);
       await onAfterChange();
     } catch {
-      onError("Не удалось удалить оплату.");
+      setSectionError("Не удалось удалить оплату.");
     }
   };
 
@@ -156,6 +164,12 @@ export default function BalanceSettlementsSection({
 
   return (
     <>
+      {sectionError ? (
+        <Alert severity="error" sx={{ mt: 3, borderRadius: 3 }}>
+          {sectionError}
+        </Alert>
+      ) : null}
+
       {/* Баланс */}
       <Paper sx={{ p: 2, mt: 3 }}>
         <Typography variant="h6" gutterBottom>
@@ -315,6 +329,12 @@ export default function BalanceSettlementsSection({
             Можно прикрепить скриншот перевода (опционально).
           </Alert>
 
+          {payError ? (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
+              {payError}
+            </Alert>
+          ) : null}
+
           <TextField
             label="Сумма"
             value={payAmount}
@@ -355,6 +375,12 @@ export default function BalanceSettlementsSection({
           <Alert severity="info" sx={{ mb: 2 }}>
             После подтверждения оплаты баланс пересчитается.
           </Alert>
+
+          {confirmError ? (
+            <Alert severity="error" sx={{ borderRadius: 3 }}>
+              {confirmError}
+            </Alert>
+          ) : null}
         </DialogContent>
 
         <DialogActions>

@@ -50,7 +50,6 @@ type MemberUser = { id: number; username: string; email: string };
 type Props = {
   tripId: number;
   members: { user: MemberUser }[];
-  onError: (msg: string) => void;
 };
 
 function getTodayIsoLocal() {
@@ -90,12 +89,15 @@ function fromLocalTimeFieldValue(value: Date | null) {
   return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
 }
 
-export default function ItinerarySection({ tripId, members, onError }: Props) {
+export default function ItinerarySection({ tripId, members }: Props) {
   const { user } = useAuth();
   const [days, setDays] = useState<DayPlan[]>([]);
   const [activeDayId, setActiveDayId] = useState<number | null>(null);
   const [dayItems, setDayItems] = useState<DayPlanItem[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [editActivityError, setEditActivityError] = useState<string | null>(null);
+  const [commentError, setCommentError] = useState<string | null>(null);
 
   const [itTitle, setItTitle] = useState("");
   const [itFrom, setItFrom] = useState("");
@@ -158,13 +160,13 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
   };
 
   useEffect(() => {
-    reloadDays().catch(() => onError("Не удалось загрузить планировщик"));
+    reloadDays().catch(() => setSectionError("Не удалось загрузить планировщик"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
   useEffect(() => {
     if (!activeDayId) return;
-    reloadDayItems(activeDayId).catch(() => onError("Не удалось загрузить активности дня"));
+    reloadDayItems(activeDayId).catch(() => setSectionError("Не удалось загрузить активности дня"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId, activeDayId]);
 
@@ -209,11 +211,12 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
   const createDayForSelected = async () => {
     if (!selectedDate) return;
     try {
+      setSectionError(null);
       const d = await createDay(tripId, iso(selectedDate), "");
       await reloadDays();
       setActiveDayId(d.id);
     } catch {
-      onError("Не удалось создать день.");
+      setSectionError("Не удалось создать день.");
     }
   };
 
@@ -221,12 +224,13 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     if (!activeDayId) return;
     if (!window.confirm("Удалить день?")) return;
     try {
+      setSectionError(null);
       await deleteDay(tripId, activeDayId);
       setActiveDayId(null);
       setDayItems([]);
       await reloadDays();
     } catch {
-      onError("Не удалось удалить день.");
+      setSectionError("Не удалось удалить день.");
     }
   };
 
@@ -234,11 +238,12 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     e.preventDefault();
     if (!activeDayId || !itTitle.trim()) return;
     if (createTimeInvalid) {
-      onError("Время окончания не может быть раньше времени начала.");
+      setSectionError("Время окончания не может быть раньше времени начала.");
       return;
     }
 
     try {
+      setSectionError(null);
       await createDayItem(tripId, activeDayId, {
         title: itTitle.trim(),
         time_from: itFrom || null,
@@ -255,26 +260,37 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
       await reloadDayItems(activeDayId);
       await reloadDays(); // обновим точки на календаре
     } catch {
-      onError("Не удалось добавить активность");
+      setSectionError("Не удалось добавить активность");
     }
   };
 
   const onToggleDone = async (it: DayPlanItem) => {
     if (!activeDayId) return;
-    await patchDayItem(tripId, activeDayId, it.id, { is_done: !it.is_done });
-    await reloadDayItems(activeDayId);
-    await reloadDays();
+    try {
+      setSectionError(null);
+      await patchDayItem(tripId, activeDayId, it.id, { is_done: !it.is_done });
+      await reloadDayItems(activeDayId);
+      await reloadDays();
+    } catch {
+      setSectionError("Не удалось обновить активность.");
+    }
   };
 
   const onDeleteItem = async (itemId: number) => {
     if (!activeDayId) return;
     if (!window.confirm("Удалить активность?")) return;
-    await deleteDayItem(tripId, activeDayId, itemId);
-    await reloadDayItems(activeDayId);
-    await reloadDays();
+    try {
+      setSectionError(null);
+      await deleteDayItem(tripId, activeDayId, itemId);
+      await reloadDayItems(activeDayId);
+      await reloadDays();
+    } catch {
+      setSectionError("Не удалось удалить активность.");
+    }
   };
 
   const onOpenEditActivity = (item: DayPlanItem) => {
+    setEditActivityError(null);
     setEditActivity(item);
     setEditActivityTitle(item.title);
     setEditActivityFrom(toHm(item.time_from));
@@ -293,21 +309,23 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     setEditActivityDesc("");
     setEditActivityAssigneeId(null);
     setEditActivitySaving(false);
+    setEditActivityError(null);
   };
 
   const onSaveEditedActivity = async () => {
     if (!activeDayId || !editActivity) return;
     if (!editActivityTitle.trim()) {
-      onError("Введите название активности.");
+      setEditActivityError("Введите название активности.");
       return;
     }
     if (editTimeInvalid) {
-      onError("Время окончания не может быть раньше времени начала.");
+      setEditActivityError("Время окончания не может быть раньше времени начала.");
       return;
     }
 
     setEditActivitySaving(true);
     try {
+      setEditActivityError(null);
       await patchDayItem(tripId, activeDayId, editActivity.id, {
         title: editActivityTitle.trim(),
         time_from: editActivityFrom || null,
@@ -319,7 +337,7 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
       await reloadDays();
       onCloseEditActivity();
     } catch {
-      onError("Не удалось сохранить изменения активности.");
+      setEditActivityError("Не удалось сохранить изменения активности.");
       setEditActivitySaving(false);
     }
   };
@@ -332,6 +350,7 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
   };
 
   const onOpenComments = (item: DayPlanItem) => {
+    setCommentError(null);
     setCommentItem(item);
     setCommentText("");
     setEditingCommentId(null);
@@ -345,6 +364,7 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     setCommentText("");
     setEditingCommentId(null);
     setEditingCommentText("");
+    setCommentError(null);
   };
 
   const onSendComment = async () => {
@@ -353,12 +373,13 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     if (!text) return;
 
     try {
+      setCommentError(null);
       await addDayItemComment(tripId, activeDayId, commentItem.id, text);
       setCommentText("");
       await refreshCommentItem(activeDayId, commentItem.id);
       await reloadDays();
     } catch {
-      onError("Не удалось добавить комментарий.");
+      setCommentError("Не удалось добавить комментарий.");
     }
   };
 
@@ -376,16 +397,17 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     if (!activeDayId || !commentItem || !editingCommentId) return;
     const text = editingCommentText.trim();
     if (!text) {
-      onError("Комментарий не может быть пустым.");
+      setCommentError("Комментарий не может быть пустым.");
       return;
     }
 
     try {
+      setCommentError(null);
       await patchDayItemComment(tripId, activeDayId, commentItem.id, editingCommentId, text);
       onCancelEditComment();
       await refreshCommentItem(activeDayId, commentItem.id);
     } catch {
-      onError("Не удалось обновить комментарий.");
+      setCommentError("Не удалось обновить комментарий.");
     }
   };
 
@@ -394,12 +416,13 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
     if (!window.confirm("Удалить комментарий?")) return;
 
     try {
+      setCommentError(null);
       await deleteDayItemComment(tripId, activeDayId, commentItem.id, commentId);
       if (editingCommentId === commentId) onCancelEditComment();
       await refreshCommentItem(activeDayId, commentItem.id);
       await reloadDays();
     } catch {
-      onError("Не удалось удалить комментарий.");
+      setCommentError("Не удалось удалить комментарий.");
     }
   };
 
@@ -428,6 +451,12 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
         <Typography variant="h6" gutterBottom>
           Планировщик по дням
         </Typography>
+
+        {sectionError ? (
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
+            {sectionError}
+          </Alert>
+        ) : null}
 
         <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
           <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
@@ -638,6 +667,12 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
         <DialogTitle>Редактировать активность</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 0.5 }}>
+            {editActivityError ? (
+              <Alert severity="error" sx={{ borderRadius: 3 }}>
+                {editActivityError}
+              </Alert>
+            ) : null}
+
             {editTimeInvalid ? (
               <Alert severity="error" variant="outlined">
                 Время окончания не может быть раньше времени начала.
@@ -707,6 +742,12 @@ export default function ItinerarySection({ tripId, members, onError }: Props) {
       <Dialog open={commentOpen} onClose={onCloseComments} maxWidth="sm" fullWidth>
         <DialogTitle>Комментарии: {commentItem?.title}</DialogTitle>
         <DialogContent dividers>
+          {commentError ? (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
+              {commentError}
+            </Alert>
+          ) : null}
+
           {(commentItem?.comments ?? []).map((comment) => (
             <Paper key={comment.id} variant="outlined" sx={{ p: 1, mb: 1 }}>
               <Box display="flex" justifyContent="space-between" alignItems="center" gap={1} sx={{ mb: 0.75 }}>

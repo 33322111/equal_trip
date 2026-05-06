@@ -205,6 +205,8 @@ export default function TripDetailPage() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
 
   const [error, setError] = useState<string | null>(null);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   // Receipt dialog state
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -305,24 +307,34 @@ export default function TripDetailPage() {
     setSettlements(pays);
   };
 
+  const loadAllData = async () => {
+    const [tripData, exp, bal, st, pays] = await Promise.all([
+      getTrip(tripId),
+      listExpenses(tripId),
+      getBalance(tripId),
+      getTripStats(tripId),
+      listSettlements(tripId),
+    ]);
+    setTrip(tripData);
+    setExpenses(exp);
+    setBalance(bal);
+    setStats(st);
+    setSettlements(pays);
+  };
+
   const loadAll = async () => {
     setError(null);
     try {
-      const [tripData, exp, bal, st, pays] = await Promise.all([
-        getTrip(tripId),
-        listExpenses(tripId),
-        getBalance(tripId),
-        getTripStats(tripId),
-        listSettlements(tripId),
-      ]);
-      setTrip(tripData);
-      setExpenses(exp);
-      setBalance(bal);
-      setStats(st);
-      setSettlements(pays);
+      await loadAllData();
     } catch {
       setError("Не удалось загрузить данные поездки.");
     }
+  };
+
+  const refreshBalanceAndSettlements = async () => {
+    const [bal, pays] = await Promise.all([getBalance(tripId), listSettlements(tripId)]);
+    setBalance(bal);
+    setSettlements(pays);
   };
 
   useEffect(() => {
@@ -359,28 +371,28 @@ export default function TripDetailPage() {
     if (!window.confirm(`Удалить участника ${label} из поездки?`)) return;
 
     try {
-      setError(null);
+      setMembersError(null);
       await removeTripMember(tripId, memberId);
-      await loadAll();
+      await loadAllData();
     } catch (e: any) {
-      setError(extractApiErrorMessage(e, "Не удалось удалить участника."));
+      setMembersError(extractApiErrorMessage(e, "Не удалось удалить участника."));
     }
   };
 
   // Invite link
   const onCreateInvite = async () => {
     try {
-      setError(null);
+      setInviteError(null);
       const { token } = await createInvite(tripId);
       const url = `${window.location.origin}/join/${token}`;
       setInviteUrl(url);
       try {
         await copyTextToClipboard(url);
       } catch {
-        setError("Приглашение создано, но ссылку не удалось скопировать автоматически. Скопируйте ее вручную ниже.");
+        setInviteError("Приглашение создано, но ссылку не удалось скопировать автоматически. Скопируйте ее вручную ниже.");
       }
     } catch {
-      setError("Не удалось создать приглашение.");
+      setInviteError("Не удалось создать приглашение.");
     }
   };
 
@@ -399,13 +411,14 @@ export default function TripDetailPage() {
     searchTimer.current = window.setTimeout(async () => {
       setUserLoading(true);
       try {
+        setInviteError(null);
         const res = await searchUsers(q);
 
         // фильтруем уже добавленных
         const existingUserIds = new Set((trip?.members ?? []).map((m) => m.user.id));
         setUserOptions(res.filter((u: any) => !existingUserIds.has(u.id)));
       } catch {
-        setError("Не удалось выполнить поиск пользователей.");
+        setInviteError("Не удалось выполнить поиск пользователей.");
       } finally {
         setUserLoading(false);
       }
@@ -421,14 +434,14 @@ export default function TripDetailPage() {
     if (!selectedUser) return;
     try {
       setAddingUser(true);
-      setError(null);
+      setInviteError(null);
       await addTripMember(tripId, selectedUser.id);
       setSelectedUser(null);
       setUserQuery("");
       setUserOptions([]);
-      await loadAll();
+      await loadAllData();
     } catch (e: any) {
-      setError(extractApiErrorMessage(e, "Не удалось добавить участника."));
+      setInviteError(extractApiErrorMessage(e, "Не удалось добавить участника."));
     } finally {
       setAddingUser(false);
     }
@@ -708,6 +721,12 @@ export default function TripDetailPage() {
           onToggle={() => toggleSection("members")}
         >
           <Box sx={{ px: 0.5 }}>
+            {membersError ? (
+              <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
+                {membersError}
+              </Alert>
+            ) : null}
+
             {trip.members.map((m) => {
               const canRemove = isOwner && m.role === "MEMBER" && m.user.id !== user?.id;
               const avatarSrc = getAvatarSrc(m.user.avatar);
@@ -757,6 +776,12 @@ export default function TripDetailPage() {
             onToggle={() => toggleSection("invite")}
           >
             <Stack spacing={2}>
+              {inviteError ? (
+                <Alert severity="error" sx={{ borderRadius: 3 }}>
+                  {inviteError}
+                </Alert>
+              ) : null}
+
               <Button variant="contained" onClick={onCreateInvite}>
                 Сгенерировать ссылку (и скопировать)
               </Button>
@@ -835,7 +860,7 @@ export default function TripDetailPage() {
           collapsed={collapsedSections.checklists}
           onToggle={() => toggleSection("checklists")}
         >
-          <ChecklistSection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
+          <ChecklistSection tripId={tripId} members={trip.members} />
         </TripSection>
 
         <TripSection
@@ -843,7 +868,7 @@ export default function TripDetailPage() {
           collapsed={collapsedSections.itinerary}
           onToggle={() => toggleSection("itinerary")}
         >
-          <ItinerarySection tripId={tripId} members={trip.members} onError={(msg) => setError(msg)} />
+          <ItinerarySection tripId={tripId} members={trip.members} />
         </TripSection>
 
         <TripSection
@@ -854,7 +879,6 @@ export default function TripDetailPage() {
           <ExpensesSection
             tripId={tripId}
             trip={trip}
-            onError={(msg) => setError(msg)}
             onAfterChange={refreshExpenseRelatedData}
             onExpensesChange={setExpenses}
           />
@@ -888,8 +912,7 @@ export default function TripDetailPage() {
             members={trip.members}
             balance={balance}
             settlements={settlements}
-            onAfterChange={loadAll}
-            onError={(msg) => setError(msg)}
+            onAfterChange={refreshBalanceAndSettlements}
           />
         </TripSection>
 

@@ -14,6 +14,7 @@ import {
   DialogContent,
   DialogActions,
   Chip,
+  Alert,
 } from "@mui/material";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -46,7 +47,6 @@ type MemberUser = { id: number; username: string; email: string };
 type Props = {
   tripId: number;
   members: { user: MemberUser }[];
-  onError: (msg: string) => void;
 };
 
 function toLocalDatePickerValue(value: string | null | undefined) {
@@ -63,11 +63,14 @@ function fromLocalDatePickerValue(value: Date | null) {
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 }
 
-export default function ChecklistSection({ tripId, members, onError }: Props) {
+export default function ChecklistSection({ tripId, members }: Props) {
   const { user } = useAuth();
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [activeChecklistId, setActiveChecklistId] = useState<number | null>(null);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [editItemError, setEditItemError] = useState<string | null>(null);
+  const [commentError, setCommentError] = useState<string | null>(null);
 
   const [newChecklistTitle, setNewChecklistTitle] = useState<string>(
     "Список дел / паковочный лист"
@@ -111,7 +114,7 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
   // init load
   useEffect(() => {
     if (!Number.isFinite(tripId)) return;
-    reloadChecklists().catch(() => onError("Не удалось загрузить чек-листы"));
+    reloadChecklists().catch(() => setSectionError("Не удалось загрузить чек-листы"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
@@ -121,30 +124,32 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
       setChecklistItems([]);
       return;
     }
-    reloadItems(activeChecklistId).catch(() => onError("Не удалось загрузить задачи чек-листа"));
+    reloadItems(activeChecklistId).catch(() => setSectionError("Не удалось загрузить задачи чек-листа"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId, activeChecklistId]);
 
   const onCreateChecklist = async () => {
     try {
+      setSectionError(null);
       const title = newChecklistTitle.trim() || "Чек-лист";
       const created = await createChecklist(tripId, title);
 
       await reloadChecklists();
       setActiveChecklistId(created.id);
     } catch {
-      onError("Не удалось создать чек-лист.");
+      setSectionError("Не удалось создать чек-лист.");
     }
   };
 
   const onDeleteChecklist = async (cid: number) => {
     if (!window.confirm("Удалить чек-лист?")) return;
     try {
+      setSectionError(null);
       await deleteChecklist(tripId, cid);
       await reloadChecklists();
       // items подтянутся useEffectом
     } catch {
-      onError("Не удалось удалить чек-лист.");
+      setSectionError("Не удалось удалить чек-лист.");
     }
   };
 
@@ -153,11 +158,12 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     if (!activeChecklistId) return;
 
     if (!itemTitle.trim()) {
-      onError("Введите название задачи.");
+      setSectionError("Введите название задачи.");
       return;
     }
 
     try {
+      setSectionError(null);
       await createChecklistItem(tripId, activeChecklistId, {
         title: itemTitle.trim(),
         assignee_id: itemAssigneeId,
@@ -170,17 +176,18 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
 
       await reloadItems(activeChecklistId);
     } catch {
-      onError("Не удалось добавить задачу.");
+      setSectionError("Не удалось добавить задачу.");
     }
   };
 
   const onToggleDone = async (it: ChecklistItem) => {
     if (!activeChecklistId) return;
     try {
+      setSectionError(null);
       await patchChecklistItem(tripId, activeChecklistId, it.id, { is_done: !it.is_done });
       await reloadItems(activeChecklistId);
     } catch {
-      onError("Не удалось обновить задачу.");
+      setSectionError("Не удалось обновить задачу.");
     }
   };
 
@@ -189,14 +196,16 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     if (!window.confirm("Удалить задачу?")) return;
 
     try {
+      setSectionError(null);
       await deleteChecklistItem(tripId, activeChecklistId, itemId);
       await reloadItems(activeChecklistId);
     } catch {
-      onError("Не удалось удалить задачу.");
+      setSectionError("Не удалось удалить задачу.");
     }
   };
 
   const onOpenEditItem = (item: ChecklistItem) => {
+    setEditItemError(null);
     setEditItem(item);
     setEditItemTitle(item.title);
     setEditItemDueDate(item.due_date ?? "");
@@ -211,17 +220,19 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     setEditItemDueDate("");
     setEditItemAssigneeId(null);
     setEditItemSaving(false);
+    setEditItemError(null);
   };
 
   const onSaveEditedItem = async () => {
     if (!activeChecklistId || !editItem) return;
     if (!editItemTitle.trim()) {
-      onError("Введите название задачи.");
+      setEditItemError("Введите название задачи.");
       return;
     }
 
     setEditItemSaving(true);
     try {
+      setEditItemError(null);
       await patchChecklistItem(tripId, activeChecklistId, editItem.id, {
         title: editItemTitle.trim(),
         assignee_id: editItemAssigneeId,
@@ -230,7 +241,7 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
       await reloadItems(activeChecklistId);
       onCloseEditItem();
     } catch {
-      onError("Не удалось сохранить изменения задачи.");
+      setEditItemError("Не удалось сохранить изменения задачи.");
       setEditItemSaving(false);
     }
   };
@@ -243,6 +254,7 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
   };
 
   const onOpenComments = (it: ChecklistItem) => {
+    setCommentError(null);
     setCommentItem(it);
     setCommentText("");
     setEditingCommentId(null);
@@ -256,6 +268,7 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     setCommentText("");
     setEditingCommentId(null);
     setEditingCommentText("");
+    setCommentError(null);
   };
 
   const onSendComment = async () => {
@@ -264,11 +277,12 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     if (!text) return;
 
     try {
+      setCommentError(null);
       await addChecklistComment(tripId, activeChecklistId, commentItem.id, text);
       setCommentText("");
       await refreshCommentItem(activeChecklistId, commentItem.id);
     } catch {
-      onError("Не удалось добавить комментарий.");
+      setCommentError("Не удалось добавить комментарий.");
     }
   };
 
@@ -286,16 +300,17 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     if (!activeChecklistId || !commentItem || !editingCommentId) return;
     const text = editingCommentText.trim();
     if (!text) {
-      onError("Комментарий не может быть пустым.");
+      setCommentError("Комментарий не может быть пустым.");
       return;
     }
 
     try {
+      setCommentError(null);
       await patchChecklistComment(tripId, activeChecklistId, commentItem.id, editingCommentId, text);
       onCancelEditComment();
       await refreshCommentItem(activeChecklistId, commentItem.id);
     } catch {
-      onError("Не удалось обновить комментарий.");
+      setCommentError("Не удалось обновить комментарий.");
     }
   };
 
@@ -304,11 +319,12 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
     if (!window.confirm("Удалить комментарий?")) return;
 
     try {
+      setCommentError(null);
       await deleteChecklistComment(tripId, activeChecklistId, commentItem.id, commentId);
       if (editingCommentId === commentId) onCancelEditComment();
       await refreshCommentItem(activeChecklistId, commentItem.id);
     } catch {
-      onError("Не удалось удалить комментарий.");
+      setCommentError("Не удалось удалить комментарий.");
     }
   };
 
@@ -330,6 +346,12 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
         <Typography variant="h6" gutterBottom>
           Чек-листы и задачи
         </Typography>
+
+        {sectionError ? (
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
+            {sectionError}
+          </Alert>
+        ) : null}
 
         <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mb: 2 }}>
           <TextField
@@ -475,6 +497,12 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
         <DialogTitle>Редактировать задачу</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 0.5 }}>
+            {editItemError ? (
+              <Alert severity="error" sx={{ borderRadius: 3 }}>
+                {editItemError}
+              </Alert>
+            ) : null}
+
             <TextField
               label="Задача"
               value={editItemTitle}
@@ -525,6 +553,12 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
       <Dialog open={commentOpen} onClose={onCloseComments} maxWidth="sm" fullWidth>
         <DialogTitle>Комментарии: {commentItem?.title}</DialogTitle>
         <DialogContent dividers>
+          {commentError ? (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 3 }}>
+              {commentError}
+            </Alert>
+          ) : null}
+
           {(commentItem?.comments ?? []).map((comment) => (
             <Paper key={comment.id} variant="outlined" sx={{ p: 1, mb: 1 }}>
               <Box display="flex" justifyContent="space-between" alignItems="center" gap={1} sx={{ mb: 0.75 }}>

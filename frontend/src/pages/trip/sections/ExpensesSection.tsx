@@ -75,7 +75,6 @@ type Props = {
   trip: TripDetail;
   onAfterChange?: () => Promise<void> | void;
   onExpensesChange?: (expenses: Expense[]) => void;
-  onError: (msg: string) => void;
 };
 
 function toAbsUrl(url: string) {
@@ -239,7 +238,7 @@ function mergeExpense(prevExpense: Expense, nextExpense: Expense) {
   };
 }
 
-export default function ExpensesSection({ tripId, trip, onAfterChange, onExpensesChange, onError }: Props) {
+export default function ExpensesSection({ tripId, trip, onAfterChange, onExpensesChange }: Props) {
   const maxSpentDate = useMemo(() => toLocalDateFieldValue(todayDateInputValue()), []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -346,21 +345,21 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
         setCategories(cats);
         replaceExpenses(exp);
       })
-      .catch(() => onError("Не удалось загрузить расходы/категории."));
+      .catch(() => setSectionError("Не удалось загрузить расходы/категории."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripId]);
 
   useEffect(() => {
     listCurrencies()
       .then(setCurrencies)
-      .catch(() => onError("Не удалось загрузить список валют"));
+      .catch(() => setSectionError("Не удалось загрузить список валют"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const refreshRelatedDataInBackground = () => {
     if (!onAfterChange) return;
     void Promise.resolve(onAfterChange()).catch(() => {
-      onError("Не удалось обновить баланс и статистику после изменения расхода.");
+      setSectionError("Не удалось обновить баланс и статистику после изменения расхода.");
     });
   };
 
@@ -531,7 +530,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
       updateExpenses((prev) => prev.filter((expense) => expense.id !== expenseId));
       refreshRelatedDataInBackground();
     } catch {
-      onError("Не удалось удалить расход.");
+      reportSectionError("Не удалось удалить расход.");
     }
   };
 
@@ -600,7 +599,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
       mergeExpenseIntoList(updatedExpense);
       onCloseReceipt();
     } catch {
-      onError("Не удалось удалить чек.");
+      reportSectionError("Не удалось удалить чек.");
     }
   };
 
