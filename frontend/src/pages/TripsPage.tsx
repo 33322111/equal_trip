@@ -11,6 +11,10 @@ import {
   MenuItem,
   Collapse,
 } from "@mui/material";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import ruLocale from "date-fns/locale/ru";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { Link } from "react-router-dom";
@@ -19,6 +23,20 @@ import { extractApiErrorMessage } from "../utils/errorMessages";
 
 type SortOrder = "asc" | "desc";
 type TripsSectionKey = "create" | "current" | "upcoming" | "past";
+
+function toLocalDatePickerValue(value: string | null | undefined) {
+  if (!value) return null;
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day);
+}
+
+function fromLocalDatePickerValue(value: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
 
 function PageSection({
   title,
@@ -305,6 +323,7 @@ export default function TripsPage() {
 
   return (
     <Box sx={{ minHeight: "100%", backgroundColor: "#edf1f5", py: { xs: 3, md: 5 } }}>
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
       <Container>
         <Paper
           sx={{
@@ -361,22 +380,29 @@ export default function TripsPage() {
               sx={{ flex: "1 1 100%" }}
             />
 
-            <TextField
+            <DatePicker
               label="Дата начала"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ flex: { xs: "1 1 100%", sm: "1 1 200px" } }}
+              value={toLocalDatePickerValue(startDate)}
+              onChange={(value) => setStartDate(fromLocalDatePickerValue(value))}
+              format="dd.MM.yyyy"
+              slotProps={{
+                textField: {
+                  sx: { flex: { xs: "1 1 100%", sm: "1 1 200px" } },
+                },
+              }}
             />
 
-            <TextField
+            <DatePicker
               label="Дата окончания"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ flex: { xs: "1 1 100%", sm: "1 1 200px" } }}
+              value={toLocalDatePickerValue(endDate)}
+              onChange={(value) => setEndDate(fromLocalDatePickerValue(value))}
+              format="dd.MM.yyyy"
+              minDate={toLocalDatePickerValue(startDate) ?? undefined}
+              slotProps={{
+                textField: {
+                  sx: { flex: { xs: "1 1 100%", sm: "1 1 200px" } },
+                },
+              }}
             />
 
             <Button
@@ -430,6 +456,7 @@ export default function TripsPage() {
           </Paper>
         )}
       </Container>
+      </LocalizationProvider>
     </Box>
   );
 }

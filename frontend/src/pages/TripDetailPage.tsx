@@ -17,6 +17,10 @@ import {
   Avatar,
   Collapse,
 } from "@mui/material";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import ruLocale from "date-fns/locale/ru";
 
 import EditIcon from "@mui/icons-material/Edit";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
@@ -90,6 +94,20 @@ const copyTextToClipboard = async (text: string) => {
   }
   copyTextFallback(text);
 };
+
+function toLocalDatePickerValue(value: string | null | undefined) {
+  if (!value) return null;
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day);
+}
+
+function fromLocalDatePickerValue(value: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
 
 type UserShort = {
   id: number;
@@ -954,28 +972,36 @@ export default function TripDetailPage() {
       </Dialog>
 
       {/* Диалог редактирования дат */}
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
       <Dialog open={editDatesOpen} onClose={() => setEditDatesOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Редактировать даты поездки</DialogTitle>
 
         <DialogContent dividers>
-          <TextField
+          <DatePicker
             label="Дата начала"
-            type="date"
-            fullWidth
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-            value={editStartDate ?? ""}
-            onChange={(e) => setEditStartDate(e.target.value || null)}
+            value={toLocalDatePickerValue(editStartDate)}
+            onChange={(value) => setEditStartDate(fromLocalDatePickerValue(value))}
+            format="dd.MM.yyyy"
+            slotProps={{
+              textField: {
+                fullWidth: true,
+                margin: "normal",
+              },
+            }}
           />
 
-          <TextField
+          <DatePicker
             label="Дата окончания"
-            type="date"
-            fullWidth
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-            value={editEndDate ?? ""}
-            onChange={(e) => setEditEndDate(e.target.value || null)}
+            value={toLocalDatePickerValue(editEndDate)}
+            onChange={(value) => setEditEndDate(fromLocalDatePickerValue(value))}
+            format="dd.MM.yyyy"
+            minDate={toLocalDatePickerValue(editStartDate) ?? undefined}
+            slotProps={{
+              textField: {
+                fullWidth: true,
+                margin: "normal",
+              },
+            }}
           />
         </DialogContent>
 
@@ -986,6 +1012,7 @@ export default function TripDetailPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      </LocalizationProvider>
 
       {/* Диалог просмотра чека */}
       <ReceiptDialog

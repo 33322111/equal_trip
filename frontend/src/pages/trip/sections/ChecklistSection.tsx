@@ -15,6 +15,10 @@ import {
   DialogActions,
   Chip,
 } from "@mui/material";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import ruLocale from "date-fns/locale/ru";
 
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -44,6 +48,20 @@ type Props = {
   members: { user: MemberUser }[];
   onError: (msg: string) => void;
 };
+
+function toLocalDatePickerValue(value: string | null | undefined) {
+  if (!value) return null;
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day);
+}
+
+function fromLocalDatePickerValue(value: Date | null) {
+  if (!value || Number.isNaN(value.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+}
 
 export default function ChecklistSection({ tripId, members, onError }: Props) {
   const { user } = useAuth();
@@ -307,6 +325,7 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
 
   return (
     <>
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
       <Paper sx={{ p: 2, mt: 3 }}>
         <Typography variant="h6" gutterBottom>
           Чек-листы и задачи
@@ -376,13 +395,16 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
                   renderInput={(params) => <TextField {...params} label="Ответственный" />}
                 />
 
-                <TextField
+                <DatePicker
                   label="Срок"
-                  type="date"
-                  value={itemDueDate}
-                  onChange={(e) => setItemDueDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: { xs: "100%", sm: 180 } }}
+                  value={toLocalDatePickerValue(itemDueDate)}
+                  onChange={(value) => setItemDueDate(fromLocalDatePickerValue(value))}
+                  format="dd.MM.yyyy"
+                  slotProps={{
+                    textField: {
+                      sx: { width: { xs: "100%", sm: 180 } },
+                    },
+                  }}
                 />
 
                 <Button type="submit" variant="contained" sx={{ width: { xs: "100%", lg: "auto" } }}>
@@ -473,13 +495,16 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
               renderInput={(params) => <TextField {...params} label="Ответственный" />}
             />
 
-            <TextField
+            <DatePicker
               label="Срок"
-              type="date"
-              value={editItemDueDate}
-              onChange={(e) => setEditItemDueDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+              value={toLocalDatePickerValue(editItemDueDate)}
+              onChange={(value) => setEditItemDueDate(fromLocalDatePickerValue(value))}
+              format="dd.MM.yyyy"
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                },
+              }}
             />
           </Stack>
         </DialogContent>
@@ -496,6 +521,7 @@ export default function ChecklistSection({ tripId, members, onError }: Props) {
       </Dialog>
 
       {/* Диалог комментариев */}
+      </LocalizationProvider>
       <Dialog open={commentOpen} onClose={onCloseComments} maxWidth="sm" fullWidth>
         <DialogTitle>Комментарии: {commentItem?.title}</DialogTitle>
         <DialogContent dividers>
