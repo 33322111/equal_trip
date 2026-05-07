@@ -26,6 +26,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import Autocomplete from "@mui/material/Autocomplete";
 
@@ -207,6 +208,8 @@ export default function TripDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [membersError, setMembersError] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteInfo, setInviteInfo] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
   // Receipt dialog state
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -237,6 +240,7 @@ export default function TripDetailPage() {
   const [selectedUser, setSelectedUser] = useState<UserShort | null>(null);
   const [addingUser, setAddingUser] = useState(false);
   const searchTimer = useRef<number | null>(null);
+  const inviteUrlInputRef = useRef<HTMLInputElement | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<SectionKey, boolean>>({
     members: false,
     invite: false,
@@ -383,16 +387,41 @@ export default function TripDetailPage() {
   const onCreateInvite = async () => {
     try {
       setInviteError(null);
+      setInviteInfo(null);
+      setInviteSuccess(null);
       const { token } = await createInvite(tripId);
       const url = `${window.location.origin}/join/${token}`;
       setInviteUrl(url);
       try {
         await copyTextToClipboard(url);
+        setInviteSuccess("Ссылка приглашения скопирована.");
       } catch {
-        setInviteError("Приглашение создано, но ссылку не удалось скопировать автоматически. Скопируйте ее вручную ниже.");
+        setInviteInfo("Safari может блокировать автокопирование после создания ссылки. Нажмите кнопку «Скопировать ссылку» ниже.");
       }
     } catch {
       setInviteError("Не удалось создать приглашение.");
+    }
+  };
+
+  const selectInviteUrlInput = () => {
+    const input = inviteUrlInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+    input.setSelectionRange(0, input.value.length);
+  };
+
+  const onCopyInviteUrl = async () => {
+    if (!inviteUrl) return;
+    try {
+      setInviteError(null);
+      setInviteInfo(null);
+      setInviteSuccess(null);
+      await copyTextToClipboard(inviteUrl);
+      setInviteSuccess("Ссылка приглашения скопирована.");
+    } catch {
+      selectInviteUrlInput();
+      setInviteInfo("Не удалось скопировать автоматически. Ссылка выделена — нажмите Cmd+C.");
     }
   };
 
@@ -412,6 +441,8 @@ export default function TripDetailPage() {
       setUserLoading(true);
       try {
         setInviteError(null);
+        setInviteInfo(null);
+        setInviteSuccess(null);
         const res = await searchUsers(q);
 
         // фильтруем уже добавленных
@@ -435,6 +466,8 @@ export default function TripDetailPage() {
     try {
       setAddingUser(true);
       setInviteError(null);
+      setInviteInfo(null);
+      setInviteSuccess(null);
       await addTripMember(tripId, selectedUser.id);
       setSelectedUser(null);
       setUserQuery("");
@@ -782,14 +815,42 @@ export default function TripDetailPage() {
                 </Alert>
               ) : null}
 
+              {inviteInfo ? (
+                <Alert severity="info" sx={{ borderRadius: 3 }}>
+                  {inviteInfo}
+                </Alert>
+              ) : null}
+
+              {inviteSuccess ? (
+                <Alert severity="success" sx={{ borderRadius: 3 }}>
+                  {inviteSuccess}
+                </Alert>
+              ) : null}
+
               <Button variant="contained" onClick={onCreateInvite}>
                 Сгенерировать ссылку (и скопировать)
               </Button>
 
               {inviteUrl && (
-                <Typography color="text.secondary" sx={{ wordBreak: "break-all" }}>
-                  {inviteUrl}
-                </Typography>
+                <Stack spacing={1}>
+                  <TextField
+                    label="Ссылка приглашения"
+                    value={inviteUrl}
+                    fullWidth
+                    inputRef={inviteUrlInputRef}
+                    InputProps={{ readOnly: true }}
+                    onFocus={(e) => e.target.select()}
+                  />
+
+                  <Button
+                    variant="outlined"
+                    startIcon={<ContentCopyIcon />}
+                    onClick={onCopyInviteUrl}
+                    sx={{ width: { xs: "100%", sm: "auto" } }}
+                  >
+                    Скопировать ссылку
+                  </Button>
+                </Stack>
               )}
 
               <Autocomplete
