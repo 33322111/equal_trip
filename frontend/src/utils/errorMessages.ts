@@ -91,5 +91,15 @@ export function extractApiErrorMessage(
     return translatedNonFieldErrors;
   }
 
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    for (const [key, value] of Object.entries(data)) {
+      if (key === "detail" || key === "non_field_errors" || fields.includes(key)) continue;
+      const translatedFieldMessage = translateErrorMessage(value);
+      if (translatedFieldMessage) {
+        return translatedFieldMessage;
+      }
+    }
+  }
+
   return translateErrorMessage(error?.message) || fallback;
 }
