@@ -13,32 +13,69 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 import os
 import sys
+from django.core.exceptions import ImproperlyConfigured
 from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+PROJECT_ROOT = BASE_DIR.parent
+load_dotenv(PROJECT_ROOT / ".env")
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_list(name: str, default=None):
+    value = os.getenv(name)
+    if value is None:
+        return list(default or [])
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def env_required(name: str, *, default=None, required: bool = False) -> str:
+    value = os.getenv(name, default)
+    if required and (value is None or not str(value).strip()):
+        raise ImproperlyConfigured(f"Environment variable {name} is required.")
+    return value
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-vv9cs9-+b*bx9is&%0u2j7m=7m5i=!jd%37lrvey5#74(fc0&+")
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DJANGO_DEBUG", "1").strip().lower() in {"1", "true", "yes", "on"}
+IS_TEST = "test" in sys.argv
+DJANGO_ENV = os.getenv("DJANGO_ENV", "test" if IS_TEST else "development").strip().lower()
+if DJANGO_ENV == "prod":
+    DJANGO_ENV = "production"
+
+DEBUG = env_bool("DJANGO_DEBUG", default=DJANGO_ENV != "production")
+IS_PRODUCTION = DJANGO_ENV == "production"
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = env_required(
+    "DJANGO_SECRET_KEY",
+    default=None if IS_PRODUCTION else "django-insecure-local-dev-key",
+    required=IS_PRODUCTION,
+)
 
 if DEBUG:
-    ALLOWED_HOSTS = ["*"]
+    ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1", "[::1]"])
 else:
-    ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if host.strip()]
+    ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")
+    if not ALLOWED_HOSTS:
+        raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS must be set when DEBUG is disabled.")
 
-CSRF_TRUSTED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
-    if origin.strip()
-]
+FRONTEND_URL = env_required(
+    "FRONTEND_URL",
+    default=None if IS_PRODUCTION else "http://localhost:5173",
+    required=IS_PRODUCTION,
+)
+
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[FRONTEND_URL] if IS_PRODUCTION else [])
 
 # Application definition
 
@@ -101,11 +138,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv("DJANGO_DB_NAME", "equaltrip_db"),
-        'USER': os.getenv("DJANGO_DB_USER", "trip_user"),
-        'PASSWORD': os.getenv("DJANGO_DB_PASSWORD", "trip_password"),
-        'HOST': os.getenv("DJANGO_DB_HOST", "localhost"),
-        'PORT': os.getenv("DJANGO_DB_PORT", "5432"),
+        'NAME': env_required("DJANGO_DB_NAME", default=None if IS_PRODUCTION else "equaltrip_db", required=IS_PRODUCTION),
+        'USER': env_required("DJANGO_DB_USER", default=None if IS_PRODUCTION else "trip_user", required=IS_PRODUCTION),
+        'PASSWORD': env_required("DJANGO_DB_PASSWORD", default=None if IS_PRODUCTION else "trip_password", required=IS_PRODUCTION),
+        'HOST': env_required("DJANGO_DB_HOST", default=None if IS_PRODUCTION else "localhost", required=IS_PRODUCTION),
+        'PORT': env_required("DJANGO_DB_PORT", default=None if IS_PRODUCTION else "5432", required=IS_PRODUCTION),
     }
 }
 
@@ -149,9 +186,14 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_HEADERS = (*default_headers, 'x-client-timezone')
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -161,15 +203,17 @@ REST_FRAMEWORK = {
 
 AUTH_USER_MODEL = 'users.User'
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 IMAGE_UPLOAD_MAX_BYTES = int(os.getenv("IMAGE_UPLOAD_MAX_BYTES", str(5 * 1024 * 1024)))
 DOCUMENT_UPLOAD_MAX_BYTES = int(os.getenv("DOCUMENT_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
 
-OPENEXCHANGERATES_API_KEY = os.getenv("OPENEXCHANGERATES_API_KEY", "e3888ae5b7854938a4367005549bedc7")
-FX_RATES_ASYNC = os.getenv("FX_RATES_ASYNC", "0" if "test" in sys.argv else "1").strip().lower() in {"1", "true", "yes", "on"}
+OPENEXCHANGERATES_API_KEY = env_required(
+    "OPENEXCHANGERATES_API_KEY",
+    default=None if IS_PRODUCTION else "",
+    required=IS_PRODUCTION,
+)
+FX_RATES_ASYNC = env_bool("FX_RATES_ASYNC", default=not IS_TEST)
 FX_RATE_FETCH_MAX_WORKERS = int(os.getenv("FX_RATE_FETCH_MAX_WORKERS", "1"))
 FX_RATE_FETCH_LOCK_SECONDS = int(os.getenv("FX_RATE_FETCH_LOCK_SECONDS", "60"))
 FX_RATE_FETCH_TIMEOUT = int(os.getenv("FX_RATE_FETCH_TIMEOUT", "10"))
@@ -183,5 +227,5 @@ EMAIL_USE_SSL = True
 EMAIL_USE_TLS = False
 EMAIL_HOST_PASSWORD = os.getenv("YANDEX_SMTP_PASSWORD")
 EMAIL_TIMEOUT = 15  # секунды
-EMAIL_NOTIFICATIONS_ASYNC = os.getenv("EMAIL_NOTIFICATIONS_ASYNC", "0" if "test" in sys.argv else "1").strip().lower() in {"1", "true", "yes", "on"}
+EMAIL_NOTIFICATIONS_ASYNC = env_bool("EMAIL_NOTIFICATIONS_ASYNC", default=not IS_TEST)
 EMAIL_NOTIFICATION_MAX_WORKERS = int(os.getenv("EMAIL_NOTIFICATION_MAX_WORKERS", "2"))

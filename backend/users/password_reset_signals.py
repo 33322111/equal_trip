@@ -13,7 +13,7 @@ def password_reset_token_created(sender, instance, reset_password_token, **kwarg
         message=(
             "Вы запросили сброс пароля.\n\n"
             f"Перейдите по ссылке, чтобы задать новый пароль:\n{reset_url}\n\n"
-            "Если это были не Вы — просто проигнорируйте письмо."
+            "Если это были не Вы – просто проигнорируйте письмо."
         ),
         recipients=[reset_password_token.user.email],
     )

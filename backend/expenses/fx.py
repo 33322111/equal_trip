@@ -23,6 +23,14 @@ class RateUnavailableError(Exception):
     pass
 
 
+def _has_api_key() -> bool:
+    return bool(str(getattr(settings, "OPENEXCHANGERATES_API_KEY", "") or "").strip())
+
+
+def _missing_api_key_message() -> str:
+    return "Не настроен OPENEXCHANGERATES_API_KEY. Добавьте ключ курсов валют в .env, чтобы использовать мультивалютные расходы."
+
+
 def _normalize_date(target_date=None):
     return target_date or timezone.now().astimezone(dt_timezone.utc).date()
 
@@ -82,7 +90,7 @@ def _clear_refresh_lock(cache_key, future):
 
 
 def schedule_rates_refresh(target_date=None, currencies=None):
-    if not getattr(settings, "FX_RATES_ASYNC", False):
+    if not getattr(settings, "FX_RATES_ASYNC", False) or not _has_api_key():
         return False
 
     target_date = _normalize_date(target_date)
@@ -107,6 +115,9 @@ def get_rate_to_rub_fast(currency: str, target_date=None) -> Decimal:
     if rate:
         return rate.rate_to_rub
 
+    if not _has_api_key():
+        raise RateUnavailableError(_missing_api_key_message())
+
     if getattr(settings, "FX_RATES_ASYNC", False):
         schedule_rates_refresh(target_date, currencies=[currency])
         raise RateUnavailableError(
@@ -119,6 +130,8 @@ def get_rate_to_rub_fast(currency: str, target_date=None) -> Decimal:
 
 
 def fetch_rates_for_date(target_date):
+    if not _has_api_key():
+        raise RateUnavailableError(_missing_api_key_message())
     url = OPENEXCHANGE_URL.format(date=target_date.strftime("%Y-%m-%d"))
     params = {
         "app_id": settings.OPENEXCHANGERATES_API_KEY,
@@ -138,6 +151,9 @@ def get_rate_to_rub(currency: str, target_date=None) -> Decimal:
     if rate:
         return rate.rate_to_rub
 
+    if not _has_api_key():
+        raise RateUnavailableError(_missing_api_key_message())
+
     refresh_rates_for_date(target_date, currencies=[currency])
     refreshed = ExchangeRate.objects.filter(currency=currency, date=target_date).first()
     if refreshed:
@@ -155,6 +171,9 @@ def get_all_currencies():
     data = cache.get(cache_key)
     if data:
         return data
+
+    if not _has_api_key():
+        raise RateUnavailableError(_missing_api_key_message())
 
     resp = requests.get(
         CURRENCIES_URL,

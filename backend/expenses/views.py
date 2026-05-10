@@ -17,7 +17,7 @@ from .export_pdf import export_trip_pdf
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .fx import get_all_currencies, warm_today_rates
+from .fx import RateUnavailableError, get_all_currencies, warm_today_rates
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -106,7 +106,10 @@ class TripExportPDFView(APIView):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_currencies(request):
-    data = get_all_currencies()
+    try:
+        data = get_all_currencies()
+    except RateUnavailableError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     warm_today_rates()
     return Response(
         [

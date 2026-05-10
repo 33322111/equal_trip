@@ -27,6 +27,7 @@ services:
     env_file:
       - ${APP_ENV_FILE:-.env.prod}
     environment:
+      DJANGO_ENV: "production"
       DJANGO_DEBUG: "0"
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}

@@ -326,7 +326,7 @@ export default function BalanceSettlementsSection({
         <DialogTitle>Отметить оплату</DialogTitle>
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Можно прикрепить скриншот перевода (опционально).
+            Можно прикрепить подтверждение перевода (опционально).
           </Alert>
 
           {payError ? (
@@ -344,7 +344,7 @@ export default function BalanceSettlementsSection({
           />
 
           <Button variant="outlined" component="label" startIcon={<AttachFileIcon />} sx={{ mt: 1 }}>
-            Прикрепить скриншот перевода
+            Прикрепить подтверждение
             <input
               hidden
               type="file"

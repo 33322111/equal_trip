@@ -583,6 +583,20 @@ class ExpensesApiTests(APITestCase):
         codes = [row["code"] for row in response.data]
         self.assertEqual(codes, ["AED", "RUB", "USD"])
 
+    @patch("expenses.views.get_all_currencies")
+    def test_currencies_endpoint_returns_clear_error_when_api_key_is_missing(self, mocked):
+        mocked.side_effect = RateUnavailableError(
+            "Не настроен OPENEXCHANGERATES_API_KEY. Добавьте ключ курсов валют в .env, чтобы использовать мультивалютные расходы."
+        )
+        self.auth(self.owner)
+        response = self.client.get("/api/currencies/")
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(
+            response.data["detail"],
+            "Не настроен OPENEXCHANGERATES_API_KEY. Добавьте ключ курсов валют в .env, чтобы использовать мультивалютные расходы.",
+        )
+
     def test_export_csv_contains_report_data(self):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -1003,6 +1017,18 @@ class ExpenseFxTests(TestCase):
             get_rate_to_rub_fast("GBP", target_date)
 
         mocked_schedule.assert_called_once_with(target_date, currencies=["GBP"])
+
+    @override_settings(FX_RATES_ASYNC=True, OPENEXCHANGERATES_API_KEY="")
+    @patch("expenses.fx.schedule_rates_refresh")
+    def test_get_rate_to_rub_fast_returns_clear_error_without_api_key(self, mocked_schedule):
+        with self.assertRaises(RateUnavailableError) as exc:
+            get_rate_to_rub_fast("GBP", date(2026, 5, 2))
+
+        self.assertEqual(
+            str(exc.exception),
+            "Не настроен OPENEXCHANGERATES_API_KEY. Добавьте ключ курсов валют в .env, чтобы использовать мультивалютные расходы.",
+        )
+        mocked_schedule.assert_not_called()
 
     @patch("expenses.fx.requests.get")
     def test_get_all_currencies_fetches_then_uses_cache(self, mocked_get):
