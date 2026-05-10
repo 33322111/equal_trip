@@ -210,7 +210,7 @@ DOCUMENT_UPLOAD_MAX_BYTES = int(os.getenv("DOCUMENT_UPLOAD_MAX_BYTES", str(10 * 
 
 OPENEXCHANGERATES_API_KEY = env_required(
     "OPENEXCHANGERATES_API_KEY",
-    default=None if IS_PRODUCTION else "",
+    default=None if IS_PRODUCTION else ("test-openexchangerates-key" if IS_TEST else ""),
     required=IS_PRODUCTION,
 )
 FX_RATES_ASYNC = env_bool("FX_RATES_ASYNC", default=not IS_TEST)
