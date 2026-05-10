@@ -58,7 +58,7 @@ IS_PRODUCTION = DJANGO_ENV == "production"
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env_required(
     "DJANGO_SECRET_KEY",
-    default=None if IS_PRODUCTION else "django-insecure-local-dev-key",
+    default=None if IS_PRODUCTION else "django-insecure-local-dev-key-for-tests-and-development-32",
     required=IS_PRODUCTION,
 )
 
@@ -208,11 +208,13 @@ MEDIA_ROOT = BASE_DIR / "media"
 IMAGE_UPLOAD_MAX_BYTES = int(os.getenv("IMAGE_UPLOAD_MAX_BYTES", str(5 * 1024 * 1024)))
 DOCUMENT_UPLOAD_MAX_BYTES = int(os.getenv("DOCUMENT_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
 
-OPENEXCHANGERATES_API_KEY = env_required(
-    "OPENEXCHANGERATES_API_KEY",
-    default=None if IS_PRODUCTION else ("test-openexchangerates-key" if IS_TEST else ""),
-    required=IS_PRODUCTION,
-)
+OPENEXCHANGERATES_API_KEY = os.getenv("OPENEXCHANGERATES_API_KEY")
+if IS_TEST and not str(OPENEXCHANGERATES_API_KEY or "").strip():
+    OPENEXCHANGERATES_API_KEY = "test-openexchangerates-key"
+elif IS_PRODUCTION and not str(OPENEXCHANGERATES_API_KEY or "").strip():
+    raise ImproperlyConfigured("Environment variable OPENEXCHANGERATES_API_KEY is required.")
+else:
+    OPENEXCHANGERATES_API_KEY = OPENEXCHANGERATES_API_KEY or ""
 FX_RATES_ASYNC = env_bool("FX_RATES_ASYNC", default=not IS_TEST)
 FX_RATE_FETCH_MAX_WORKERS = int(os.getenv("FX_RATE_FETCH_MAX_WORKERS", "1"))
 FX_RATE_FETCH_LOCK_SECONDS = int(os.getenv("FX_RATE_FETCH_LOCK_SECONDS", "60"))
