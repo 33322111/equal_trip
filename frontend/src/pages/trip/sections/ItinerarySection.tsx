@@ -446,7 +446,8 @@ export default function ItinerarySection({ tripId, members }: Props) {
   };
 
   return (
-    <>
+    <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
+      <>
       <Paper sx={{ p: 2, mt: 3 }}>
         <Typography variant="h6" gutterBottom>
           Планировщик по дням
@@ -458,7 +459,6 @@ export default function ItinerarySection({ tripId, members }: Props) {
           </Alert>
         ) : null}
 
-        <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ruLocale}>
           <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
             <Box sx={{ width: { xs: "100%", md: 340 }, maxWidth: 340, mx: { xs: "auto", md: 0 } }}>
               <DateCalendar
@@ -660,7 +660,6 @@ export default function ItinerarySection({ tripId, members }: Props) {
               )}
             </Box>
           </Stack>
-        </LocalizationProvider>
       </Paper>
 
       <Dialog open={editActivityOpen} onClose={onCloseEditActivity} maxWidth="sm" fullWidth>
@@ -818,6 +817,7 @@ export default function ItinerarySection({ tripId, members }: Props) {
           <Button onClick={onCloseComments}>Закрыть</Button>
         </DialogActions>
       </Dialog>
-    </>
+      </>
+    </LocalizationProvider>
   );
 }
