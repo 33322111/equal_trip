@@ -391,3 +391,8 @@ class TripsApiTests(APITestCase):
 
         unknown_obj = SimpleNamespace()
         self.assertFalse(permission.has_object_permission(request, None, unknown_obj))
+
+    def test_missing_trip_returns_404_for_non_member_instead_of_403(self):
+        self.auth(self.outsider)
+        response = self.client.get("/api/trips/999999/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

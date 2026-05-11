@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from rest_framework import status
@@ -137,6 +138,35 @@ class ItineraryApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("time_to", response.data)
 
+    def test_patch_day_item_rejects_non_member_assignee(self):
+        day = self.create_day()
+        item = self.create_item(day)
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/days/{day.id}/items/{item.id}/",
+            {"assignee_id": self.outsider.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("assignee_id", response.data)
+
+    def test_patch_day_item_accepts_null_assignee(self):
+        day = self.create_day()
+        item = self.create_item(day)
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/days/{day.id}/items/{item.id}/",
+            {"assignee_id": None},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        item.refresh_from_db()
+        self.assertIsNone(item.assignee_id)
+
     def test_comments_crud_and_permissions(self):
         day = self.create_day()
         item = self.create_item(day)
@@ -256,3 +286,79 @@ class ItineraryApiTests(APITestCase):
     def test_dayplan_model_str(self):
         day = self.create_day()
         self.assertEqual(str(day), f"{self.trip.id} — {day.date}")
+
+    def test_retrieve_day_item_uses_read_serializer(self):
+        day = self.create_day()
+        item = self.create_item(day)
+        DayPlanComment.objects.create(item=item, user=self.owner, text="Bring tickets")
+
+        self.auth(self.owner)
+        response = self.client.get(f"/api/trips/{self.trip.id}/days/{day.id}/items/{item.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["title"], "Morning walk")
+        self.assertEqual(len(response.data["comments"]), 1)
+        self.assertEqual(response.data["assignee"]["id"], self.member.id)
+
+    @patch("itinerary.views.safe_send_notification")
+    def test_create_day_item_assignment_sends_notification(self, mocked_send):
+        day = self.create_day()
+        self.auth(self.owner)
+
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/days/{day.id}/items/",
+            {
+                "title": "Cafe",
+                "assignee_id": self.member.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        mocked_send.assert_called_once()
+        subject, _, recipients, _ = mocked_send.call_args[0]
+        self.assertIn("назначена активность", subject)
+        self.assertEqual(recipients, [self.member.email])
+
+    @patch("itinerary.views.safe_send_notification")
+    def test_patch_day_item_reassignment_sends_notification(self, mocked_send):
+        day = self.create_day()
+        item = DayPlanItem.objects.create(day=day, title="Self task", assignee=self.owner)
+        mocked_send.reset_mock()
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/days/{day.id}/items/{item.id}/",
+            {"assignee_id": self.member.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mocked_send.assert_called_once()
+        subject, _, recipients, _ = mocked_send.call_args[0]
+        self.assertIn("назначена активность", subject)
+        self.assertEqual(recipients, [self.member.email])
+
+    @patch("itinerary.views.safe_send_notification")
+    def test_patch_day_item_details_for_same_assignee_sends_notification(self, mocked_send):
+        day = self.create_day()
+        item = self.create_item(day)
+        mocked_send.reset_mock()
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/days/{day.id}/items/{item.id}/",
+            {
+                "title": "Evening walk",
+                "time_from": "18:00",
+                "time_to": "19:00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mocked_send.assert_called_once()
+        subject, message, recipients, _ = mocked_send.call_args[0]
+        self.assertIn("Активность обновлена", subject)
+        self.assertIn("Evening walk", message)
+        self.assertEqual(recipients, [self.member.email])

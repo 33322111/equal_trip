@@ -5,10 +5,12 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from rest_framework import serializers
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from users.password_reset_signals import password_reset_token_created
+from users.serializers import ProfileSerializer, RegisterSerializer
 
 User = get_user_model()
 
@@ -256,3 +258,17 @@ class UsersApiTests(APITestCase):
         kwargs = mocked_send_notification.call_args.kwargs
         self.assertIn(f"{settings.FRONTEND_URL}/reset-password/abc123", kwargs["message"])
         self.assertEqual(kwargs["recipients"], [self.user.email])
+
+    def test_register_serializer_rejects_duplicate_username_case_insensitive(self):
+        serializer = RegisterSerializer()
+        with self.assertRaisesMessage(serializers.ValidationError, "Пользователь с таким именем уже существует."):
+            serializer.validate_username("IVAN")
+
+    def test_register_serializer_rejects_whitespace_email_directly(self):
+        serializer = RegisterSerializer()
+        with self.assertRaisesMessage(serializers.ValidationError, "Email обязателен."):
+            serializer.validate_email("   ")
+
+    def test_profile_serializer_accepts_none_avatar(self):
+        serializer = ProfileSerializer(instance=self.user)
+        self.assertIsNone(serializer.validate_avatar(None))

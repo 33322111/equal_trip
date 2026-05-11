@@ -1,16 +1,35 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from checklists.models import Checklist, ChecklistItem
 from expenses.models import Expense
 from itinerary.models import DayPlan, DayPlanItem
-from notifications.email import send_notification
+from notifications.email import (
+    _log_async_failure,
+    _normalize_recipients,
+    _send_notification_sync,
+    _submit_notification,
+    send_notification,
+)
+from notifications.signals_expenses import capture_previous_expense_state
+from notifications.utils import (
+    build_trip_message,
+    format_date_value,
+    format_datetime_value,
+    format_trip_period,
+    trip_member_emails,
+    trip_url,
+    user_emails,
+)
 from payments.models import Settlement
 from trips.models import Trip, TripMember
 
@@ -68,6 +87,28 @@ class NotificationSignalsTests(TestCase):
         subject, _, recipients, _ = mocked_send.call_args[0]
         self.assertIn("Расход обновлён", subject)
         self.assertIn(self.member.email, recipients)
+
+    @patch("notifications.signals_expenses.safe_send_notification")
+    def test_expense_update_with_coordinates_includes_them_in_message(self, mocked_send):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Cafe",
+            amount=Decimal("12.00"),
+            currency="RUB",
+            amount_rub=Decimal("12.00"),
+            fx_rate=Decimal("1.000000"),
+        )
+        mocked_send.reset_mock()
+
+        expense.lat = Decimal("55.755800")
+        expense.lng = Decimal("37.617300")
+        expense.title = "Cafe updated"
+        expense.save(update_fields=["lat", "lng", "title"])
+
+        self.assertEqual(mocked_send.call_count, 1)
+        _, message, _, _ = mocked_send.call_args[0]
+        self.assertIn("Координаты: 55.755800, 37.617300", message)
 
     @patch("notifications.signals_expenses.safe_send_notification")
     def test_expense_receipt_only_update_does_not_send_notification(self, mocked_send):
@@ -219,6 +260,115 @@ class NotificationSignalsTests(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             send_notification("Subj", "Body", ["member@example.com"])
         self.assertEqual(mocked_submit.call_count, 1)
+
+
+class NotificationHelpersTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user("owner_ntf_helper", "owner_ntf_helper@example.com", "StrongPass1!")
+        self.member = User.objects.create_user("member_ntf_helper", "member_ntf_helper@example.com", "StrongPass1!")
+        self.trip = Trip.objects.create(
+            title="Helpers trip",
+            owner=self.owner,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+        )
+        TripMember.objects.create(trip=self.trip, user=self.owner, role=TripMember.Role.OWNER)
+        TripMember.objects.create(trip=self.trip, user=self.member, role=TripMember.Role.MEMBER)
+
+    @override_settings(FRONTEND_URL="https://example.com/")
+    def test_notification_utils_formatters_and_message_helpers(self):
+        trip_without_dates = Trip(title="No dates", owner=self.owner)
+        trip_start_only = Trip(title="Start only", owner=self.owner, start_date=date(2026, 5, 1))
+        trip_end_only = Trip(title="End only", owner=self.owner, end_date=date(2026, 5, 2))
+
+        self.assertEqual(trip_url(self.trip), f"https://example.com/trips/{self.trip.id}")
+        self.assertEqual(format_trip_period(self.trip), f"{self.trip.start_date:%d.%m.%Y} — {self.trip.end_date:%d.%m.%Y}")
+        self.assertEqual(format_trip_period(trip_start_only), "с 01.05.2026")
+        self.assertEqual(format_trip_period(trip_end_only), "до 02.05.2026")
+        self.assertEqual(format_trip_period(trip_without_dates), "не указаны")
+        self.assertEqual(format_date_value(None), "не указана")
+
+        with timezone.override("Europe/Moscow"):
+            self.assertEqual(
+                format_datetime_value(datetime(2026, 5, 1, 10, 30)),
+                "01.05.2026 10:30",
+            )
+            aware_value = timezone.make_aware(datetime(2026, 5, 1, 10, 30), timezone.get_current_timezone())
+            self.assertEqual(format_datetime_value(aware_value, include_time=False), "01.05.2026")
+        self.assertEqual(format_datetime_value(None), "не указано")
+        self.assertEqual(
+            format_datetime_value(None, include_time=False, date_only_value=date(2026, 5, 3)),
+            "03.05.2026",
+        )
+
+        message = build_trip_message(self.trip, ["Первая строка", "", None, "Вторая строка"])
+        self.assertIn("Поездка: Helpers trip", message)
+        self.assertIn("Первая строка", message)
+        self.assertIn("Вторая строка", message)
+        self.assertNotIn("None", message)
+        self.assertEqual(
+            user_emails(self.owner, None, self.member, SimpleNamespace(email="other@example.com")),
+            [self.owner.email, self.member.email, "other@example.com"],
+        )
+
+    def test_trip_member_emails_can_exclude_users(self):
+        self.assertEqual(
+            trip_member_emails(self.trip, exclude_user_ids=[self.owner.id]),
+            [self.member.email],
+        )
+
+    @patch("notifications.email.send_mail")
+    def test_send_notification_sync_and_normalize_recipients(self, mocked_send_mail):
+        normalized = _normalize_recipients([" user@example.com ", "", "user@example.com", "other@example.com"])
+        self.assertEqual(normalized, ["user@example.com", "other@example.com"])
+
+        _send_notification_sync("Subject", "Body", normalized)
+        mocked_send_mail.assert_called_once_with(
+            subject="Subject",
+            message="Body",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=["user@example.com", "other@example.com"],
+            fail_silently=False,
+        )
+
+    @override_settings(EMAIL_NOTIFICATIONS_ASYNC=False)
+    @patch("notifications.email._send_notification_sync")
+    def test_send_notification_sync_path_uses_normalized_recipients(self, mocked_sync):
+        send_notification("Subj", "Body", [" user@example.com ", "user@example.com", "other@example.com"])
+        mocked_sync.assert_called_once_with("Subj", "Body", ["user@example.com", "other@example.com"])
+
+    @patch("logging.error")
+    def test_log_async_failure_ignores_success_and_logs_exception(self, mocked_log_error):
+        successful_future = MagicMock()
+        successful_future.exception.return_value = None
+        _log_async_failure(successful_future)
+        mocked_log_error.assert_not_called()
+
+        failed_future = MagicMock()
+        exc = RuntimeError("boom")
+        failed_future.exception.return_value = exc
+        _log_async_failure(failed_future)
+        mocked_log_error.assert_called_once()
+
+    @patch("notifications.email._EXECUTOR.submit")
+    def test_submit_notification_registers_done_callback(self, mocked_submit):
+        future = MagicMock()
+        mocked_submit.return_value = future
+
+        _submit_notification("Subject", "Body", ["user@example.com"])
+
+        mocked_submit.assert_called_once()
+        future.add_done_callback.assert_called_once()
+
+    def test_capture_previous_expense_state_ignores_missing_previous_object(self):
+        ghost_expense = SimpleNamespace(pk=123)
+        fake_sender = MagicMock()
+        fake_sender.DoesNotExist = Expense.DoesNotExist
+        fake_sender.objects.get.side_effect = Expense.DoesNotExist
+
+        capture_previous_expense_state(fake_sender, ghost_expense)
+
+        self.assertFalse(hasattr(ghost_expense, "_notification_previous_state"))
 
 
 class NotificationViewActionsTests(APITestCase):

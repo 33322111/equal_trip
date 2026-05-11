@@ -2,6 +2,7 @@ import csv
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -10,29 +11,50 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from expenses.export import _split_mode, _to_decimal as csv_to_decimal, export_trip_csv
+from common.file_validation import (
+    _format_file_size,
+    validate_document_upload,
+    validate_image_upload,
+    validate_receipt_upload,
+)
+from expenses.export import _fmt_dt as csv_fmt_dt, _split_mode, _to_decimal as csv_to_decimal, export_trip_csv
 from expenses.export_pdf import (
     _build_horizontal_bar_chart,
     _fmt_dt,
+    _fmt_dt_lines,
     _register_fonts,
     _short,
+    _table_paragraph,
     _to_decimal as pdf_to_decimal,
     export_trip_pdf,
 )
 from expenses.fx import (
     RateUnavailableError,
+    _clear_refresh_lock,
+    _refresh_rates_for_date_async,
     fetch_rates_for_date,
     get_all_currencies,
     get_rate_to_rub,
     get_rate_to_rub_fast,
     refresh_rates_for_date,
+    schedule_rates_refresh,
+    warm_today_rates,
 )
 from expenses.models import ExchangeRate, Expense, ExpenseCategory, ExpenseShare
-from expenses.serializers import _prepare_share_weights
+from expenses.serializers import (
+    ExpenseUpdateSerializer,
+    _ensure_aware_in_timezone,
+    _prepare_share_weights,
+    _resolve_client_timezone,
+    _resolve_rate_lookup_date,
+    _resolve_spent_datetime,
+)
 from expenses.services import compute_balance
 from payments.models import Settlement
 from trips.models import Trip, TripMember
@@ -692,6 +714,123 @@ class ExpensesApiTests(APITestCase):
         self.assertEqual(response.data[0]["title"], "Visible")
 
 
+class ExpenseSerializerHelperTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user("owner_helpers", "owner_helpers@example.com", "StrongPass1!")
+        self.member = User.objects.create_user("member_helpers", "member_helpers@example.com", "StrongPass1!")
+        self.trip = Trip.objects.create(
+            title="Helpers trip",
+            owner=self.owner,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+        )
+        TripMember.objects.create(trip=self.trip, user=self.owner, role=TripMember.Role.OWNER)
+        TripMember.objects.create(trip=self.trip, user=self.member, role=TripMember.Role.MEMBER)
+
+    def test_file_validation_helpers_cover_size_none_and_type_branches(self):
+        self.assertEqual(_format_file_size(1024 * 1024), "1 МБ")
+        self.assertEqual(_format_file_size(1024 * 1024 + 512 * 1024), "1.5 МБ")
+        self.assertEqual(_format_file_size(1024), "1 КБ")
+        self.assertEqual(_format_file_size(1536), "1.5 КБ")
+
+        self.assertIsNone(validate_image_upload(None, label="Аватар"))
+        self.assertIsNone(validate_document_upload(None, label="Документ"))
+        self.assertIsNone(validate_receipt_upload(None, label="Чек"))
+
+        with self.assertRaises(serializers.ValidationError):
+            validate_image_upload(
+                SimpleUploadedFile("broken.txt", b"hello", content_type="text/plain"),
+                label="Аватар",
+            )
+
+        with self.assertRaises(serializers.ValidationError):
+            validate_document_upload(
+                SimpleUploadedFile("proof.pdf", VALID_PDF_BYTES, content_type="text/plain"),
+                label="Документ",
+            )
+
+        valid_document = SimpleUploadedFile("proof.pdf", VALID_PDF_BYTES, content_type="application/pdf")
+        self.assertIs(validate_document_upload(valid_document, label="Документ"), valid_document)
+
+        valid_receipt = SimpleUploadedFile("receipt.pdf", VALID_PDF_BYTES, content_type="application/pdf")
+        self.assertIs(validate_receipt_upload(valid_receipt, label="Чек"), valid_receipt)
+
+    @patch("expenses.serializers._current_utc_date", return_value=date(2026, 5, 2))
+    def test_spent_datetime_and_rate_lookup_helpers_cover_edge_cases(self, _):
+        fallback_tz = _resolve_client_timezone(SimpleNamespace(headers={"X-Client-Timezone": "Bad/Zone"}))
+        self.assertIsNotNone(fallback_tz)
+
+        aware_spent_at = _ensure_aware_in_timezone(datetime(2026, 5, 1, 10, 30), dt_timezone.utc)
+        self.assertTrue(timezone.is_aware(aware_spent_at))
+        self.assertIsNone(_resolve_rate_lookup_date(spent_at=None, spent_time_known=False, request=None))
+        self.assertEqual(
+            _resolve_rate_lookup_date(
+                spent_at=timezone.make_aware(datetime(2026, 5, 3, 1, 30), timezone=dt_timezone.utc),
+                spent_time_known=True,
+                request=SimpleNamespace(headers={"X-Client-Timezone": "Asia/Shanghai"}),
+            ),
+            date(2026, 5, 3),
+        )
+        self.assertEqual(
+            _resolve_rate_lookup_date(
+                spent_at=timezone.make_aware(datetime(2026, 5, 3, 1, 30), timezone=dt_timezone.utc),
+                spent_time_known=False,
+                request=SimpleNamespace(headers={"X-Client-Timezone": "Asia/Shanghai"}),
+            ),
+            date(2026, 5, 2),
+        )
+
+        validated_data = {"spent_at": datetime(2026, 5, 1, 9, 15)}
+        with patch("expenses.serializers._client_today", return_value=date(2026, 5, 2)):
+            _resolve_spent_datetime(
+                validated_data,
+                request=SimpleNamespace(headers={"X-Client-Timezone": "Europe/Moscow"}),
+            )
+        self.assertTrue(timezone.is_aware(validated_data["spent_at"]))
+        self.assertEqual(validated_data["spent_date_local"], date(2026, 5, 1))
+        self.assertTrue(validated_data["spent_time_known"])
+
+        empty_date_data = {"spent_date": None}
+        _resolve_spent_datetime(empty_date_data, request=None)
+        self.assertIsNone(empty_date_data["spent_at"])
+        self.assertIsNone(empty_date_data["spent_date_local"])
+        self.assertFalse(empty_date_data["spent_time_known"])
+
+        with patch("expenses.serializers._client_today", return_value=date(2026, 5, 2)):
+            with self.assertRaises(serializers.ValidationError):
+                _resolve_spent_datetime(
+                    {"spent_at": datetime(2026, 5, 3, 9, 15)},
+                    request=SimpleNamespace(headers={"X-Client-Timezone": "Europe/Moscow"}),
+                )
+
+    def test_expense_update_serializer_handles_none_receipt_and_rate_errors(self):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Serializer expense",
+            amount=Decimal("10.00"),
+            currency="RUB",
+            amount_rub=Decimal("10.00"),
+            fx_rate=Decimal("1.000000"),
+        )
+        serializer = ExpenseUpdateSerializer(instance=expense, context={"request": SimpleNamespace(headers={})})
+        self.assertIsNone(serializer.validate_receipt(None))
+
+        serializer = ExpenseUpdateSerializer(
+            instance=expense,
+            data={"currency": "USD"},
+            partial=True,
+            context={"request": SimpleNamespace(headers={})},
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+        with patch("expenses.serializers.get_rate_to_rub_fast", side_effect=RateUnavailableError("Нет курса")):
+            with self.assertRaises(serializers.ValidationError) as exc:
+                serializer.save()
+
+        self.assertEqual(exc.exception.detail["currency"], ["Нет курса"])
+
+
 class ExpenseUnitLogicTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user("owner_logic", "owner_logic@example.com", "StrongPass1!")
@@ -889,9 +1028,11 @@ class ExpenseUnitLogicTests(TestCase):
 
         response = export_trip_csv(self.trip)
         text = response.content.decode("utf-8-sig")
+        now = timezone.now()
 
         self.assertEqual(csv_to_decimal(None), Decimal("0"))
         self.assertEqual(_split_mode([]), "none")
+        self.assertEqual(csv_fmt_dt(now, include_time=False), timezone.localtime(now).strftime("%Y-%m-%d"))
         self.assertIn("0.00 RUB", text)
 
     def test_export_csv_uses_explicit_local_date_for_date_only_expense(self):
@@ -1043,6 +1184,81 @@ class ExpenseFxTests(TestCase):
         self.assertEqual(second, {"USD": "US Dollar"})
         self.assertEqual(mocked_get.call_count, 1)
 
+    @override_settings(FX_RATES_ASYNC=False, OPENEXCHANGERATES_API_KEY="demo-key")
+    def test_get_rate_to_rub_fast_sync_branch_returns_clear_retry_message(self):
+        with self.assertRaises(RateUnavailableError) as exc:
+            get_rate_to_rub_fast("GBP", date(2026, 5, 2))
+
+        self.assertIn("пока недоступен", str(exc.exception))
+        self.assertEqual(get_rate_to_rub_fast("RUB", date(2026, 5, 2)), Decimal("1"))
+
+    @override_settings(OPENEXCHANGERATES_API_KEY="")
+    def test_fx_functions_raise_clear_error_without_api_key(self):
+        expected = (
+            "Не настроен OPENEXCHANGERATES_API_KEY. Добавьте ключ курсов валют в .env, "
+            "чтобы использовать мультивалютные расходы."
+        )
+
+        with self.assertRaisesMessage(RateUnavailableError, expected):
+            fetch_rates_for_date(date(2026, 1, 10))
+        with self.assertRaisesMessage(RateUnavailableError, expected):
+            get_rate_to_rub("USD", date(2026, 1, 10))
+        with self.assertRaisesMessage(RateUnavailableError, expected):
+            get_all_currencies()
+
+    @override_settings(FX_RATES_ASYNC=True, OPENEXCHANGERATES_API_KEY="demo-key")
+    @patch("expenses.fx._EXECUTOR.submit")
+    def test_schedule_rates_refresh_uses_cache_lock_and_clears_it_after_callback(self, mocked_submit):
+        target_date = date(2026, 5, 2)
+        future = MagicMock()
+        future.exception.return_value = None
+        mocked_submit.return_value = future
+
+        cache.delete("fx-rates-refresh:2026-05-02:USD")
+        first = schedule_rates_refresh(target_date, currencies=["usd"])
+        second = schedule_rates_refresh(target_date, currencies=["USD"])
+
+        self.assertTrue(first)
+        self.assertFalse(second)
+        mocked_submit.assert_called_once()
+        callback = future.add_done_callback.call_args.args[0]
+        callback(future)
+        self.assertIsNone(cache.get("fx-rates-refresh:2026-05-02:USD"))
+
+    @override_settings(FX_RATES_ASYNC=False, OPENEXCHANGERATES_API_KEY="demo-key")
+    def test_schedule_rates_refresh_returns_false_when_async_disabled(self):
+        self.assertFalse(schedule_rates_refresh(date(2026, 5, 2), currencies=["USD"]))
+
+    @override_settings(FX_RATES_ASYNC=True, OPENEXCHANGERATES_API_KEY="")
+    def test_schedule_rates_refresh_returns_false_without_api_key(self):
+        self.assertFalse(schedule_rates_refresh(date(2026, 5, 2), currencies=["USD"]))
+
+    @override_settings(FX_RATES_ASYNC=True, OPENEXCHANGERATES_API_KEY="demo-key")
+    @patch("expenses.fx.close_old_connections")
+    @patch("expenses.fx.refresh_rates_for_date", side_effect=RuntimeError("boom"))
+    def test_refresh_rates_for_date_async_closes_connections_even_on_failure(self, _, mocked_close):
+        with self.assertRaises(RuntimeError):
+            _refresh_rates_for_date_async(date(2026, 5, 2), currencies={"USD"})
+
+        self.assertEqual(mocked_close.call_count, 2)
+
+    @patch("logging.error")
+    def test_clear_refresh_lock_logs_failure_and_deletes_cache(self, mocked_log_error):
+        cache_key = "fx-rates-refresh:test"
+        cache.set(cache_key, True, 60)
+        future = MagicMock()
+        future.exception.return_value = RuntimeError("boom")
+
+        _clear_refresh_lock(cache_key, future)
+
+        mocked_log_error.assert_called_once()
+        self.assertIsNone(cache.get(cache_key))
+
+    @patch("expenses.fx.schedule_rates_refresh")
+    def test_warm_today_rates_delegates_to_scheduler(self, mocked_schedule):
+        warm_today_rates()
+        mocked_schedule.assert_called_once()
+
 
 class ExpensePdfTests(TestCase):
     def setUp(self):
@@ -1054,7 +1270,16 @@ class ExpensePdfTests(TestCase):
         self.assertEqual(_fmt_dt(None, include_time=False, date_only_value=date(2026, 5, 3)), "2026-05-03")
         self.assertEqual(_short("abcdef", 4), "abc…")
         self.assertEqual(pdf_to_decimal(None), Decimal("0"))
+        self.assertEqual(_fmt_dt_lines(None), ["—"])
+        self.assertEqual(_fmt_dt_lines(None, include_time=False, date_only_value=date(2026, 5, 3)), ["2026-05-03"])
         self.assertIsNone(_build_horizontal_bar_chart("Chart", [], 200, 100, colors.HexColor("#2563eb")))
+        paragraph = Paragraph("ready", getSampleStyleSheet()["BodyText"])
+        self.assertIs(_table_paragraph(paragraph, getSampleStyleSheet()["BodyText"]), paragraph)
+
+        with timezone.override("Europe/Moscow"):
+            aware = timezone.make_aware(datetime(2026, 5, 3, 12, 45), timezone.get_current_timezone())
+            self.assertEqual(_fmt_dt(aware, include_time=False), "2026-05-03")
+            self.assertEqual(_fmt_dt_lines(aware, include_time=False), ["2026-05-03"])
 
     @patch("expenses.export_pdf.pdfmetrics.registerFont")
     @patch("expenses.export_pdf.pdfmetrics.getRegisteredFontNames")
@@ -1062,6 +1287,14 @@ class ExpensePdfTests(TestCase):
         mocked_get_names.return_value = {"DejaVuSans", "DejaVuSans-Bold", "DejaVuSans-Oblique"}
         _register_fonts()
         self.assertEqual(mocked_register.call_count, 0)
+
+    @patch("expenses.export_pdf.TTFont", return_value="font-object")
+    @patch("expenses.export_pdf.pdfmetrics.registerFont")
+    @patch("expenses.export_pdf.pdfmetrics.getRegisteredFontNames", return_value=set())
+    def test_register_fonts_registers_missing_fonts(self, _, mocked_register, mocked_ttfont):
+        _register_fonts()
+        self.assertEqual(mocked_ttfont.call_count, 3)
+        self.assertEqual(mocked_register.call_count, 3)
 
     def test_export_pdf_handles_empty_trip_branches(self):
         trip_start_only = Trip.objects.create(

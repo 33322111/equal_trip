@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from rest_framework import status
@@ -248,3 +249,50 @@ class ChecklistsApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("assignee_id", response.data)
+
+    @patch("checklists.views.safe_send_notification")
+    def test_update_item_reassignment_sends_notification(self, mocked_send):
+        checklist = self.create_checklist()
+        item = ChecklistItem.objects.create(
+            checklist=checklist,
+            title="Reassign me",
+            created_by=self.owner,
+            assignee=self.owner,
+        )
+        mocked_send.reset_mock()
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/checklists/{checklist.id}/items/{item.id}/",
+            {"assignee_id": self.member.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mocked_send.assert_called_once()
+        subject, _, recipients, _ = mocked_send.call_args[0]
+        self.assertIn("назначена задача", subject)
+        self.assertEqual(recipients, [self.member.email])
+
+    @patch("checklists.views.safe_send_notification")
+    def test_update_item_details_for_same_assignee_sends_notification(self, mocked_send):
+        checklist = self.create_checklist()
+        item = self.create_item(checklist, title="Original task")
+        mocked_send.reset_mock()
+
+        self.auth(self.owner)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/checklists/{checklist.id}/items/{item.id}/",
+            {
+                "title": "Updated task",
+                "due_date": str(date.today() + timedelta(days=5)),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mocked_send.assert_called_once()
+        subject, message, recipients, _ = mocked_send.call_args[0]
+        self.assertIn("Задача обновлена", subject)
+        self.assertIn("Updated task", message)
+        self.assertEqual(recipients, [self.member.email])

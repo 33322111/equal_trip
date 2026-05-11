@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from payments.models import Settlement
+from payments.serializers import SettlementCreateSerializer
 from trips.models import Trip, TripMember
 
 User = get_user_model()
@@ -216,3 +217,43 @@ class PaymentsApiTests(APITestCase):
             str(settlement),
             f"{self.trip.id}: {self.member.id}->{self.owner.id} 100.00 RUB [pending]",
         )
+
+    def test_create_settlement_rejects_receiver_who_is_not_trip_member(self):
+        self.auth(self.member)
+        response = self.client.post(
+            f"/api/trips/{self.trip.id}/settlements/",
+            {
+                "from_user": self.member.id,
+                "to_user": self.third.id,
+                "amount": "10.00",
+                "currency": "RUB",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data[0], "Оба пользователя должны состоять в поездке.")
+
+    def test_settlement_create_serializer_accepts_none_and_valid_pdf_proof(self):
+        serializer = SettlementCreateSerializer(
+            data={
+                "from_user": self.owner.id,
+                "to_user": self.member.id,
+                "amount": "10.00",
+                "currency": "RUB",
+                "proof": None,
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertIsNone(serializer.validated_data["proof"])
+
+        pdf_serializer = SettlementCreateSerializer(
+            data={
+                "from_user": self.owner.id,
+                "to_user": self.member.id,
+                "amount": "10.00",
+                "currency": "RUB",
+                "proof": SimpleUploadedFile("proof.pdf", VALID_PDF_BYTES, content_type="application/pdf"),
+            }
+        )
+        self.assertTrue(pdf_serializer.is_valid(), pdf_serializer.errors)
