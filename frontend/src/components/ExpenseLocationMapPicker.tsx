@@ -30,6 +30,7 @@ export default function ExpenseLocationMapPicker({ center, selectedPoint, height
           options={{
             float: "right",
             noPlacemark: true,
+            provider: "yandex#search",
             placeholderContent: "Найти адрес или место",
           }}
           modules={["control.SearchControl"]}
