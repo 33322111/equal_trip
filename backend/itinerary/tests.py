@@ -287,18 +287,19 @@ class ItineraryApiTests(APITestCase):
         day = self.create_day()
         self.assertEqual(str(day), f"{self.trip.id} — {day.date}")
 
-    def test_retrieve_day_item_uses_read_serializer(self):
+    def test_list_day_items_uses_read_serializer(self):
         day = self.create_day()
         item = self.create_item(day)
         DayPlanComment.objects.create(item=item, user=self.owner, text="Bring tickets")
 
         self.auth(self.owner)
-        response = self.client.get(f"/api/trips/{self.trip.id}/days/{day.id}/items/{item.id}/")
+        response = self.client.get(f"/api/trips/{self.trip.id}/days/{day.id}/items/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["title"], "Morning walk")
-        self.assertEqual(len(response.data["comments"]), 1)
-        self.assertEqual(response.data["assignee"]["id"], self.member.id)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["title"], "Morning walk")
+        self.assertEqual(len(response.data[0]["comments"]), 1)
+        self.assertEqual(response.data[0]["assignee"]["id"], self.member.id)
 
     @patch("itinerary.views.safe_send_notification")
     def test_create_day_item_assignment_sends_notification(self, mocked_send):

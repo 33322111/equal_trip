@@ -392,6 +392,14 @@ class TripsApiTests(APITestCase):
         unknown_obj = SimpleNamespace()
         self.assertFalse(permission.has_object_permission(request, None, unknown_obj))
 
+    def test_is_trip_member_permission_rejects_unauthenticated_user(self):
+        factory = APIRequestFactory()
+        request = factory.get("/")
+        request.user = SimpleNamespace(is_authenticated=False)
+        permission = IsTripMember()
+
+        self.assertFalse(permission.has_permission(request, SimpleNamespace(kwargs={"trip_id": self.trip.id})))
+
     def test_missing_trip_returns_404_for_non_member_instead_of_403(self):
         self.auth(self.outsider)
         response = self.client.get("/api/trips/999999/")

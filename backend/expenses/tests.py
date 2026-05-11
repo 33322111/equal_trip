@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 from io import StringIO
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -796,6 +796,11 @@ class ExpenseSerializerHelperTests(TestCase):
         self.assertIsNone(empty_date_data["spent_date_local"])
         self.assertFalse(empty_date_data["spent_time_known"])
 
+        explicit_none_spent_at = {"spent_at": None}
+        _resolve_spent_datetime(explicit_none_spent_at, request=None)
+        self.assertIsNone(explicit_none_spent_at["spent_date_local"])
+        self.assertFalse(explicit_none_spent_at["spent_time_known"])
+
         with patch("expenses.serializers._client_today", return_value=date(2026, 5, 2)):
             with self.assertRaises(serializers.ValidationError):
                 _resolve_spent_datetime(
@@ -1121,6 +1126,11 @@ class ExpenseFxTests(TestCase):
             get_rate_to_rub("GBP", today)
 
         self.assertEqual(get_rate_to_rub("RUB", today), Decimal("1"))
+
+    @patch("expenses.fx.fetch_rates_for_date", return_value={"USD": 1, "RUB": 90})
+    def test_get_rate_to_rub_raises_when_target_currency_absent_after_refresh(self, _):
+        with self.assertRaises(ValueError):
+            get_rate_to_rub("GBP", date.today())
 
     @patch("expenses.fx.fetch_rates_for_date")
     def test_refresh_rates_for_date_stores_large_supported_rates(self, mocked_fetch):
