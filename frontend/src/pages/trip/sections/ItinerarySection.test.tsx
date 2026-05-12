@@ -25,6 +25,12 @@ vi.mock("../../../api/itinerary", () => ({
   deleteDayItemComment: vi.fn(),
 }));
 
+vi.mock("@mui/x-date-pickers/DateCalendar", () => ({
+  DateCalendar: ({ value }: { value: Date | null }) => (
+    <div data-testid="date-calendar">{value ? value.toISOString().slice(0, 10) : "no-date"}</div>
+  ),
+}));
+
 describe("ItinerarySection", () => {
   beforeEach(() => {
     mockUseAuth.mockReset();
@@ -67,16 +73,16 @@ describe("ItinerarySection", () => {
       />
     );
 
+    await waitFor(() => {
+      expect(mockListDays).toHaveBeenCalledWith(123);
+      expect(mockListDayItems).toHaveBeenCalledWith(123, 1);
+    });
+
     expect(await screen.findByText("Morning walk")).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("edit-activity"));
 
     expect(await screen.findByText("Редактировать активность")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Morning walk")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(mockListDays).toHaveBeenCalledWith(123);
-      expect(mockListDayItems).toHaveBeenCalledWith(123, 1);
-    });
   });
 });

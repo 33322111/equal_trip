@@ -117,7 +117,11 @@ export default function ProfilePage() {
               boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
             }}
           >
-            <Typography color="text.secondary">Загрузка...</Typography>
+            {error ? (
+              <Alert severity="error">{error}</Alert>
+            ) : (
+              <Typography color="text.secondary">Загрузка...</Typography>
+            )}
           </Paper>
         </Container>
       </Box>
