@@ -45,9 +45,12 @@ export default function Header() {
     <AppBar position="static">
       <Toolbar
         sx={{
-          flexWrap: { xs: "wrap", sm: "nowrap" },
-          gap: { xs: 1, sm: 0 },
+          flexWrap: "nowrap",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: { xs: 1, sm: 2 },
           py: { xs: 0.5, sm: 0 },
+          minHeight: { xs: 56, sm: 64 },
         }}
       >
         <Box
@@ -57,9 +60,9 @@ export default function Header() {
             flexGrow: 1,
             textDecoration: "none",
             color: "inherit",
-            width: { xs: "100%", sm: "auto" },
             display: "flex",
             alignItems: "center",
+            minWidth: 0,
             minHeight: { xs: 40, sm: 58 },
           }}
         >
@@ -68,27 +71,45 @@ export default function Header() {
             src="/logo.png"
             alt="EqualTrip"
             sx={{
-              height: { xs: 38, sm: 56 },
+              height: { xs: 28, sm: 56 },
               width: "auto",
-              maxWidth: { xs: "100%", sm: 500 },
+              maxWidth: { xs: 132, sm: 500 },
               objectFit: "contain",
               display: "block",
+              flexShrink: 1,
             }}
           />
         </Box>
 
-        <Box sx={{ width: { xs: "100%", sm: "auto" }, display: "flex", justifyContent: "flex-end" }}>
+        <Box sx={{ display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
           {!isAuthenticated ? (
-            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <Box sx={{ display: "flex", gap: { xs: 0.25, sm: 1 }, flexWrap: "nowrap", justifyContent: "flex-end" }}>
               <Button
                 component={Link}
                 to="/login"
                 color="inherit"
                 size="small"
+                sx={{
+                  minWidth: 0,
+                  px: { xs: 0.75, sm: 1.25 },
+                  fontSize: { xs: "0.82rem", sm: "0.875rem" },
+                  whiteSpace: "nowrap",
+                }}
               >
                 Войти
               </Button>
-              <Button component={Link} to="/register" color="inherit" size="small">
+              <Button
+                component={Link}
+                to="/register"
+                color="inherit"
+                size="small"
+                sx={{
+                  minWidth: 0,
+                  px: { xs: 0.75, sm: 1.25 },
+                  fontSize: { xs: "0.82rem", sm: "0.875rem" },
+                  whiteSpace: "nowrap",
+                }}
+              >
                 Регистрация
               </Button>
             </Box>

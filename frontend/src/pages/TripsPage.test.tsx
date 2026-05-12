@@ -136,8 +136,12 @@ describe("TripsPage", () => {
     renderPage();
     await screen.findByText("Пока нет поездок. Создай первую");
 
-    await user.type(screen.getByLabelText("Название"), "Новая поездка");
-    await user.type(screen.getByLabelText("Описание"), "Описание");
+    fireEvent.change(screen.getByLabelText("Название"), {
+      target: { value: "Новая поездка" },
+    });
+    fireEvent.change(screen.getByLabelText("Описание"), {
+      target: { value: "Описание" },
+    });
     fireEvent.change(screen.getByLabelText("Дата начала"), {
       target: { value: "2026-07-01" },
     });
