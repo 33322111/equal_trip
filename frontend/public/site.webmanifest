@@ -1,0 +1,21 @@
+{
+  "name": "EqualTrip",
+  "short_name": "EqualTrip",
+  "description": "Веб-приложение для совместного планирования поездок, учета расходов и взаиморасчетов.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#5b2ca0",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "1349x570",
+      "type": "image/png"
+    }
+  ]
+}
