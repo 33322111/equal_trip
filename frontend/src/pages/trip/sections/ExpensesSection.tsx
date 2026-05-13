@@ -1177,6 +1177,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
         tripId={tripId}
         trip={trip}
         categories={categories}
+        currencies={currencies}
         expense={selectedExpense}
         onSaved={async (updatedExpense) => {
           mergeExpenseIntoList(updatedExpense);

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import Autocomplete from "@mui/material/Autocomplete";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, MenuItem, FormControlLabel, Checkbox,
@@ -10,6 +11,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { TimeField } from "@mui/x-date-pickers/TimeField";
 import ruLocale from "date-fns/locale/ru";
 import { Category, Expense, updateExpense } from "../api/expenses";
+import { Currency } from "../api/currencies";
 import { TripDetail } from "../api/trips";
 import { extractApiErrorMessage } from "../utils/errorMessages";
 
@@ -19,6 +21,7 @@ type Props = {
   tripId: number;
   trip: TripDetail;
   categories: Category[];
+  currencies: Currency[];
   expense: Expense | null;
   onSaved: (expense: Expense) => Promise<void> | void;
 };
@@ -115,7 +118,7 @@ function buildEvenSplit(total: number, userIds: number[]) {
 }
 
 export default function ExpenseEditDialog({
-  open, onClose, tripId, trip, categories, expense, onSaved
+  open, onClose, tripId, trip, categories, currencies, expense, onSaved
 }: Props) {
   const maxSpentDate = useMemo(() => toLocalDateFieldValue(todayDateInputValue()), []);
   const [title, setTitle] = useState("");
@@ -131,6 +134,13 @@ export default function ExpenseEditDialog({
   const [saving, setSaving] = useState(false);
 
   const members = useMemo(() => trip.members.map(m => m.user), [trip]);
+  const currencyOptions = useMemo(() => {
+    const normalizedCurrency = currency.trim().toUpperCase();
+    if (!normalizedCurrency || currencies.some((item) => item.code === normalizedCurrency)) {
+      return currencies;
+    }
+    return [{ code: normalizedCurrency, name: normalizedCurrency }, ...currencies];
+  }, [currencies, currency]);
 
   useEffect(() => {
     if (!expense) return;
@@ -314,12 +324,22 @@ export default function ExpenseEditDialog({
             endAdornment: <InputAdornment position="end">{currency || "RUB"}</InputAdornment>,
           }}
         />
-        <TextField
-          label="Валюта"
-          fullWidth
-          margin="normal"
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value)}
+        <Autocomplete
+          options={currencyOptions}
+          sx={{ width: "100%", minWidth: 0, mt: 2 }}
+          autoHighlight
+          value={currencyOptions.find((item) => item.code === currency) ?? null}
+          onChange={(_, newValue) => setCurrency(newValue?.code ?? "RUB")}
+          getOptionLabel={(option) => `${option.code} — ${option.name}`}
+          isOptionEqualToValue={(option, value) => option.code === value.code}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Валюта"
+              margin="normal"
+              placeholder="Начни вводить: USD, EUR..."
+            />
+          )}
         />
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 2 }}>
           <DatePicker
