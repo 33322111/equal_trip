@@ -179,7 +179,7 @@ export default function BalanceSettlementsSection({
         {!balance ? (
           <Typography color="text.secondary">Загрузка баланса...</Typography>
         ) : balance.transfers.length === 0 ? (
-          <Typography color="text.secondary">Баланс нулевой — никто никому не должен ✅</Typography>
+          <Typography color="text.secondary">Баланс нулевой – никто никому не должен</Typography>
         ) : (
           <Box display="flex" flexDirection="column" gap={1}>
             {balance.transfers.map((t, idx) => {

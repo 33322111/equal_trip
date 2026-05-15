@@ -75,7 +75,9 @@ def expense_created_or_updated(sender, instance: Expense, created, **kwargs):
 
     trip = instance.trip
     author = instance.created_by
-    recipients = trip_member_emails(trip, exclude_user_ids=[author.id])
+    actor = getattr(instance, "_notification_actor", author)
+    exclude_user_ids = [actor.id] if getattr(actor, "id", None) is not None else None
+    recipients = trip_member_emails(trip, exclude_user_ids=exclude_user_ids)
     category_name = instance.category.name if instance.category else "Без категории"
     details = [
         f"Автор: {author.username}",
@@ -94,10 +96,10 @@ def expense_created_or_updated(sender, instance: Expense, created, **kwargs):
 
     if created:
         subject = f"[EqualTrip] Новый расход в поездке «{trip.title}»"
-        message = build_trip_message(trip, [f"Пользователь {author.username} добавил новый расход.", *details])
+        message = build_trip_message(trip, [f"Пользователь {actor.username} добавил новый расход.", *details])
     else:
         subject = f"[EqualTrip] Расход обновлён в поездке «{trip.title}»"
-        message = build_trip_message(trip, [f"Пользователь {author.username} обновил расход.", *details])
+        message = build_trip_message(trip, [f"Пользователь {actor.username} обновил расход.", *details])
 
     safe_send_notification(subject, message, recipients, "Failed to send expense notification email")
 
@@ -106,14 +108,16 @@ def expense_created_or_updated(sender, instance: Expense, created, **kwargs):
 def expense_deleted(sender, instance: Expense, **kwargs):
     trip = instance.trip
     author = instance.created_by
-    recipients = trip_member_emails(trip)
+    actor = getattr(instance, "_notification_actor", author)
+    exclude_user_ids = [actor.id] if getattr(actor, "id", None) is not None else None
+    recipients = trip_member_emails(trip, exclude_user_ids=exclude_user_ids)
     category_name = instance.category.name if instance.category else "Без категории"
 
     subject = f"[EqualTrip] Расход удалён в поездке «{trip.title}»"
     message = build_trip_message(
         trip,
         [
-            f"Пользователь {author.username} удалил расход.",
+            f"Пользователь {actor.username} удалил расход.",
             f"Название расхода: {instance.title}",
             f"Категория: {category_name}",
             f"Сумма: {instance.amount} {instance.currency}",

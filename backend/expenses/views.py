@@ -65,6 +65,7 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
         trip = self.get_trip()
         self.check_object_permissions(request, trip)
         instance = self.get_object()
+        instance._notification_actor = request.user
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -78,6 +79,14 @@ class TripExpenseViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         kwargs["partial"] = True
         return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        trip = self.get_trip()
+        self.check_object_permissions(request, trip)
+        instance = self.get_object()
+        instance._notification_actor = request.user
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_serializer_class(self):
         if self.action in ("update", "partial_update"):

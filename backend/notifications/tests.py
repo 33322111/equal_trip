@@ -89,6 +89,28 @@ class NotificationSignalsTests(TestCase):
         self.assertIn(self.member.email, recipients)
 
     @patch("notifications.signals_expenses.safe_send_notification")
+    def test_expense_update_uses_notification_actor_for_message_and_recipients(self, mocked_send):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Dinner",
+            amount=Decimal("50.00"),
+            currency="RUB",
+            amount_rub=Decimal("50.00"),
+            fx_rate=Decimal("1.000000"),
+        )
+        mocked_send.reset_mock()
+
+        expense._notification_actor = self.member
+        expense.title = "Dinner updated"
+        expense.save(update_fields=["title"])
+
+        self.assertEqual(mocked_send.call_count, 1)
+        _, message, recipients, _ = mocked_send.call_args[0]
+        self.assertIn(f"Пользователь {self.member.username} обновил расход.", message)
+        self.assertEqual(recipients, [self.owner.email])
+
+    @patch("notifications.signals_expenses.safe_send_notification")
     def test_expense_update_with_coordinates_includes_them_in_message(self, mocked_send):
         expense = Expense.objects.create(
             trip=self.trip,
@@ -148,6 +170,27 @@ class NotificationSignalsTests(TestCase):
         self.assertIn("Расход удалён", subject)
         self.assertIn(self.owner.email, recipients)
         self.assertIn(self.member.email, recipients)
+
+    @patch("notifications.signals_expenses.safe_send_notification")
+    def test_expense_delete_uses_notification_actor_for_message_and_recipients(self, mocked_send):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Delete by other",
+            amount=Decimal("45.00"),
+            currency="RUB",
+            amount_rub=Decimal("45.00"),
+            fx_rate=Decimal("1.000000"),
+        )
+        mocked_send.reset_mock()
+
+        expense._notification_actor = self.member
+        expense.delete()
+
+        self.assertEqual(mocked_send.call_count, 1)
+        _, message, recipients, _ = mocked_send.call_args[0]
+        self.assertIn(f"Пользователь {self.member.username} удалил расход.", message)
+        self.assertEqual(recipients, [self.owner.email])
 
     @patch("notifications.signals_payments.safe_send_notification")
     def test_settlement_create_notifies_receiver(self, mocked_send):
@@ -403,6 +446,31 @@ class NotificationViewActionsTests(APITestCase):
         self.assertIn("обновлена", subject)
         self.assertIn("Описание поездки обновлено", message)
         self.assertEqual(recipients, [self.member.email])
+
+    @patch("notifications.signals_expenses.safe_send_notification")
+    def test_expense_update_via_api_notifies_author_when_other_member_edits(self, mocked_send):
+        expense = Expense.objects.create(
+            trip=self.trip,
+            created_by=self.owner,
+            title="Shared expense",
+            amount=Decimal("90.00"),
+            currency="RUB",
+            amount_rub=Decimal("90.00"),
+            fx_rate=Decimal("1.000000"),
+        )
+
+        self.auth(self.member)
+        response = self.client.patch(
+            f"/api/trips/{self.trip.id}/expenses/{expense.id}/",
+            {"title": "Shared expense updated"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(mocked_send.call_count, 1)
+        _, message, recipients, _ = mocked_send.call_args[0]
+        self.assertIn(f"Пользователь {self.member.username} обновил расход.", message)
+        self.assertEqual(recipients, [self.owner.email])
 
     @patch("trips.views.safe_send_notification")
     def test_add_member_sends_notifications(self, mocked_send):

@@ -486,7 +486,7 @@ export default function ChecklistSection({ tripId, members }: Props) {
               ))}
 
               {checklistItems.length === 0 ? (
-                <Typography color="text.secondary">Пока задач нет. Добавь первую</Typography>
+                <Typography color="text.secondary">Пока задач нет. Добавь первую!</Typography>
               ) : null}
             </Box>
           </>

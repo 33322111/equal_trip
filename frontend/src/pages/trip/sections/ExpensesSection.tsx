@@ -1148,7 +1148,7 @@ export default function ExpensesSection({ tripId, trip, onAfterChange, onExpense
           })}
 
           {sortedExpenses.length === 0 ? (
-            <Typography color="text.secondary">Пока нет расходов. Добавь первый 🙂</Typography>
+            <Typography color="text.secondary">Пока расходов нет. Добавь первый!</Typography>
           ) : null}
         </Box>
 

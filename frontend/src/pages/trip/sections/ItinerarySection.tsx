@@ -653,7 +653,7 @@ export default function ItinerarySection({ tripId, members }: Props) {
                     })}
 
                     {dayItems.length === 0 ? (
-                      <Typography color="text.secondary">Пока активностей нет.</Typography>
+                      <Typography color="text.secondary">Пока активностей нет. Добавь первую!</Typography>
                     ) : null}
                   </Box>
                 </>
