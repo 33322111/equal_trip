@@ -168,8 +168,7 @@ class NotificationSignalsTests(TestCase):
         self.assertEqual(mocked_send.call_count, 1)
         subject, _, recipients, _ = mocked_send.call_args[0]
         self.assertIn("Расход удалён", subject)
-        self.assertIn(self.owner.email, recipients)
-        self.assertIn(self.member.email, recipients)
+        self.assertEqual(recipients, [self.member.email])
 
     @patch("notifications.signals_expenses.safe_send_notification")
     def test_expense_delete_uses_notification_actor_for_message_and_recipients(self, mocked_send):
@@ -458,6 +457,7 @@ class NotificationViewActionsTests(APITestCase):
             amount_rub=Decimal("90.00"),
             fx_rate=Decimal("1.000000"),
         )
+        mocked_send.reset_mock()
 
         self.auth(self.member)
         response = self.client.patch(
