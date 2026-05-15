@@ -14,6 +14,8 @@ class DayPlan(models.Model):
     class Meta:
         unique_together = ("trip", "date")
         ordering = ("date",)
+        verbose_name = "План дня"
+        verbose_name_plural = "Планы по дням"
 
     def __str__(self):
         return f"{self.trip_id} — {self.date}"
@@ -37,9 +39,17 @@ class DayPlanItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = "Активность"
+        verbose_name_plural = "Активности"
+
 
 class DayPlanComment(models.Model):
     item = models.ForeignKey(DayPlanItem, on_delete=models.CASCADE, related_name="comments")
     user = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
     text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Комментарий к активности"
+        verbose_name_plural = "Комментарии к активностям"

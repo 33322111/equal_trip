@@ -3,6 +3,10 @@ from django.contrib.auth.admin import UserAdmin
 
 from .models import User
 
+admin.site.site_header = "Администрирование EqualTrip"
+admin.site.site_title = "EqualTrip"
+admin.site.index_title = "Панель управления"
+
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):

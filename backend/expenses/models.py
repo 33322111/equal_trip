@@ -6,6 +6,10 @@ from trips.models import Trip, TripMember
 class ExpenseCategory(models.Model):
     name = models.CharField(max_length=64, unique=True)
 
+    class Meta:
+        verbose_name = "Категория расхода"
+        verbose_name_plural = "Категории расходов"
+
     def __str__(self):
         return self.name
 
@@ -33,6 +37,10 @@ class Expense(models.Model):
     amount_rub = models.DecimalField(max_digits=30, decimal_places=2, default=0)
     fx_rate = models.DecimalField(max_digits=24, decimal_places=12, default=1)
 
+    class Meta:
+        verbose_name = "Расход"
+        verbose_name_plural = "Расходы"
+
     def __str__(self):
         return f"{self.trip_id}: {self.title} {self.amount} {self.currency}"
 
@@ -44,6 +52,8 @@ class ExpenseShare(models.Model):
 
     class Meta:
         unique_together = ("expense", "user")
+        verbose_name = "Доля расхода"
+        verbose_name_plural = "Доли расходов"
 
 
 class ExchangeRate(models.Model):
@@ -56,6 +66,8 @@ class ExchangeRate(models.Model):
         indexes = [
             models.Index(fields=["currency", "date"]),
         ]
+        verbose_name = "Курс валюты"
+        verbose_name_plural = "Курсы валют"
 
     def __str__(self):
         return f"{self.currency} {self.date} = {self.rate_to_rub} RUB"

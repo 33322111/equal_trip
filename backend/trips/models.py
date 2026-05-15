@@ -17,6 +17,10 @@ class Trip(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        verbose_name = "Поездка"
+        verbose_name_plural = "Поездки"
+
     def __str__(self):
         return f"{self.title} ({self.owner_id})"
 
@@ -33,6 +37,8 @@ class TripMember(models.Model):
 
     class Meta:
         unique_together = ("trip", "user")
+        verbose_name = "Участник поездки"
+        verbose_name_plural = "Участники поездки"
 
 
 class TripInvite(models.Model):
@@ -50,3 +56,7 @@ class TripInvite(models.Model):
         related_name="used_invites"
     )
     used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Приглашение"
+        verbose_name_plural = "Приглашения"

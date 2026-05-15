@@ -11,6 +11,10 @@ class Checklist(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="created_checklists")
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        verbose_name = "Чек-лист"
+        verbose_name_plural = "Чек-листы"
+
     def __str__(self):
         return f"{self.trip_id}: {self.title}"
 
@@ -28,6 +32,10 @@ class ChecklistItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = "Задача чек-листа"
+        verbose_name_plural = "Задачи чек-листа"
+
     def __str__(self):
         return f"{self.checklist_id}: {self.title}"
 
@@ -37,3 +45,7 @@ class ChecklistComment(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="checklist_comments")
     text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Комментарий к задаче"
+        verbose_name_plural = "Комментарии к задачам"

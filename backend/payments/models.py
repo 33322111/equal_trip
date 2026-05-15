@@ -24,5 +24,9 @@ class Settlement(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     confirmed_at = models.DateTimeField(null=True, blank=True)
 
+    class Meta:
+        verbose_name = "Оплата"
+        verbose_name_plural = "Оплаты"
+
     def __str__(self):
         return f"{self.trip_id}: {self.from_user_id}->{self.to_user_id} {self.amount} {self.currency} [{self.status}]"
